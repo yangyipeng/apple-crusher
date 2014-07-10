@@ -5,7 +5,7 @@
   <arg name="limited" default="true" />
   <arg name="sim" default="true" />
   
-  <node name="plan_gen" pkg="robot_arm" type="plan_gen" respawn="false" launch-prefix="$(arg launch_prefix)" output="screen">
+  <node name="plan_gen" pkg="apple_crusher" type="plan_gen" respawn="false" launch-prefix="$(arg launch_prefix)" output="screen">
     <rosparam command="load" file="$(find ur5_moveit_config)/config/kinematics.yaml"/>
     <param name="/planning_plugin" value="ompl_interface/OMPLPlanner"/>
     <rosparam command="load" file="$(find ur5_moveit_config)/config/ompl_planning.yaml"/>
