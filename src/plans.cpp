@@ -19,14 +19,14 @@
 
 #define UR5_GROUP_NAME "manipulator"
 
-std::vector<joint_vals_t> pick_pose_joint_vals;
-std::vector<joint_vals_t> place_pose_joint_vals;
+std::vector<joint_values_t> pick_pose_joint_vals;
+std::vector<joint_values_t> place_pose_joint_vals;
 
 
 std::vector<ur5_motion_plan> pickTrajLibrary;
 std::vector<ur5_motion_plan> placeTrajLibrary;
 
-int gridLinspace( std::vector<joint_vals_t>& target_joint_vals, rect_grid& rg, geometry_msgs::Quaternion& orientation, robot_model::RobotModelPtr robot_model, planning_scene::PlanningSceneConstPtr plan_scene)
+int gridLinspace( std::vector<joint_values_t>& target_joint_vals, rect_grid& rg, geometry_msgs::Quaternion& orientation, robot_model::RobotModelPtr robot_model, planning_scene::PlanningSceneConstPtr plan_scene)
 {
     double di, dj, dk;
     di = dj = dk = 0.0;
@@ -34,7 +34,7 @@ int gridLinspace( std::vector<joint_vals_t>& target_joint_vals, rect_grid& rg, g
 
     // Calculate grid spacings if xres != 1
     if (rg.xres != 1) {
-        di = (rg.xlim_high - rg.xlim_low)/(rg.xres-1); 
+        di = (rg.xlim_high - rg.xlim_low)/(rg.xres-1);
     }
     if (rg.yres != 1) {
         dj = (rg.ylim_high - rg.ylim_low)/(rg.yres-1);
@@ -46,11 +46,11 @@ int gridLinspace( std::vector<joint_vals_t>& target_joint_vals, rect_grid& rg, g
     // Allocate
     num_poses = rg.xres * rg.yres * rg.zres;
     target_joint_vals.reserve(num_poses);
-    
+
     geometry_msgs::Pose geo_pose;
     robot_state::RobotState state(robot_model);
     const robot_state::JointModelGroup* jmg = state.getJointModelGroup(UR5_GROUP_NAME);
-    
+
     // Linspace
     int n = -1;
     for (int i = 0; i < rg.xres; i++)
@@ -78,7 +78,7 @@ int gridLinspace( std::vector<joint_vals_t>& target_joint_vals, rect_grid& rg, g
                         break;
                     }
                     // If IK succeeded
-                    joint_vals_t jvals;
+                    joint_values_t jvals;
                     state.copyJointGroupPositions(UR5_GROUP_NAME, jvals);
                     // Now check for self-collisions
                     if (!plan_scene->isStateColliding(state, UR5_GROUP_NAME))
@@ -107,7 +107,7 @@ void printPose(const geometry_msgs::Pose& pose)
     return;
 }
 
-void printJointValues(const joint_vals_t& jvals)
+void printJointValues(const joint_values_t& jvals)
 {
     printf("Joint values: ");
     for (int i=0; i<jvals.size(); i++)
@@ -174,24 +174,24 @@ void getMsgFromRobotState(moveit_msgs::RobotState& state_msg, const robot_state:
     const double* pos = robot_state->getVariablePositions();
     const double* vel = robot_state->getVariableVelocities();
     const double* effort = robot_state->getVariableEffort();
-    
+
     for (int i=0; i<num_vars; i++)
     {
         joint_state.position.push_back(pos[i]);
         joint_state.velocity.push_back(vel[i]);
         joint_state.effort.push_back(effort[i]);
     }
-    
+
     state_msg.joint_state = joint_state;
-    
+
     // No Multi-DOF joints
-    
+
     // TODO: Attached objects
-    
+
     // Is diff?
     state_msg.is_diff = false;
-    
-    return;    
+
+    return;
 }
 
 bool genTraj(ur5_motion_plan& plan, planning_scene::PlanningScenePtr plan_scene, planning_interface::PlannerManagerPtr planner_instance, std::vector<moveit_msgs::Constraints> constraints)
@@ -199,12 +199,12 @@ bool genTraj(ur5_motion_plan& plan, planning_scene::PlanningScenePtr plan_scene,
     planning_interface::MotionPlanRequest req;
     planning_interface::MotionPlanResponse res;
     req.group_name = UR5_GROUP_NAME;
-    
+
     // Add constraints
-    req.goal_constraints = constraints;    
+    req.goal_constraints = constraints;
     req.planner_id = "manipulator[RRTConnectkConfigDefault]";
     req.allowed_planning_time = 5.0;
-    
+
     // Define workspace
     req.workspace_parameters.max_corner.x = 1.0;
     req.workspace_parameters.max_corner.y = 1.0;
@@ -212,7 +212,7 @@ bool genTraj(ur5_motion_plan& plan, planning_scene::PlanningScenePtr plan_scene,
     req.workspace_parameters.min_corner.x = -1.0;
     req.workspace_parameters.min_corner.y = -1.0;
     req.workspace_parameters.min_corner.z = 0.05;
-    
+
     // Now prepare the planning context
     int tries = 0;
     while (tries < 3)
@@ -230,9 +230,9 @@ bool genTraj(ur5_motion_plan& plan, planning_scene::PlanningScenePtr plan_scene,
             return true;
         }
         // else planner failed
-        tries++;        
+        tries++;
     }
-    return false;    
+    return false;
 }
 
 moveit_msgs::Constraints genPoseConstraint(geometry_msgs::Pose pose_goal)
@@ -243,12 +243,12 @@ moveit_msgs::Constraints genPoseConstraint(geometry_msgs::Pose pose_goal)
     // Position and orientation tolerances
     std::vector<double> tolerance_pose(3, 0.01);
     std::vector<double> tolerance_angle(3, 0.01);
-    
+
     // Create constraint from pose using IK
     return kinematic_constraints::constructGoalConstraints("ee_link", pose_pkt, tolerance_pose, tolerance_angle);
 }
 
-moveit_msgs::Constraints genJointValueConstraint(joint_vals_t jvals, robot_model::RobotModelPtr robot_model)
+moveit_msgs::Constraints genJointValueConstraint(joint_values_t jvals, robot_model::RobotModelPtr robot_model)
 {
     // Initialize state variable with joint values
     robot_state::RobotState state(robot_model);
@@ -272,16 +272,29 @@ int main(int argc, char** argv)
     ROS_INFO("Loading ur5 robot model.");
     robot_model_loader::RobotModelLoader robot_model_loader("robot_description");
     robot_model::RobotModelPtr robot_model = robot_model_loader.getModel();
-    
+
     if (robot_model->getName() == "")
     {
         ROS_ERROR("RobotModel has not been initialized successfully.");
-    }   
-    
+    }
+
+    ROS_INFO("Loading kinematics plugin.");
+    const kinematics_plugin_loader::KinematicsPluginLoaderPtr kine_plugin_loader = robot_model_loader.getKinematicsPluginLoader();
+
+    ROS_INFO("Grabbing JointModelGroup.");
+    robot_model::JointModelGroup* jmg = robot_model->getJointModelGroup(UR5_GROUP_NAME);
+
+    ROS_INFO("Initializing kinematics solver.");
+    kinematics::KinematicsBasePtr ik_solver = (kine_plugin_loader->getLoaderFunction())(    jmg);
+    bool success = ik_solver->initialize("robot_description", UR5_GROUP_NAME, "world", "ee_link", 0.1);
+    ROS_INFO("Initialize successful? : %d", (int) success);
+    ROS_INFO("Default timeout = %f ", ik_solver->getDefaultTimeout());
+    ROS_INFO("Get tip frame = %s ", ik_solver->getTipFrame().c_str());
+
     // Init planning scene
     ROS_INFO("Initializing PlanningScene from RobotModel");
     planning_scene::PlanningScenePtr plan_scene(new planning_scene::PlanningScene(robot_model));
-    
+
     // Load the planner
     ROS_INFO("Loading the planner plugin.");
     boost::scoped_ptr<pluginlib::ClassLoader<planning_interface::PlannerManager> > planner_plugin_loader;
@@ -299,7 +312,7 @@ int main(int argc, char** argv)
     {
         planner_instance.reset(planner_plugin_loader->createUnmanagedInstance("ompl_interface/OMPLPlanner"));
         planner_instance->initialize(robot_model, nh.getNamespace());
-    }   
+    }
     catch(pluginlib::PluginlibException& ex)
     {
         const std::vector<std::string> &classes = planner_plugin_loader->getDeclaredClasses();
@@ -316,10 +329,10 @@ int main(int argc, char** argv)
     // Initialize pickPoses
     ROS_INFO("Generating target joint values");
     initTargetJointVals(robot_model, plan_scene);
-    
+
 
     // Now generate plans
-    for (int n = 0; n < place_pose_joint_vals.size(); n++) 
+    for (int n = 0; n < place_pose_joint_vals.size(); n++)
     {
         sleep(5);
         // Solve IK for place position n
@@ -328,7 +341,7 @@ int main(int argc, char** argv)
         place_state.setJointGroupPositions(UR5_GROUP_NAME, place_pose_joint_vals[n]);
         // Jump current state to place pose
         plan_scene->setCurrentState(place_state);
-        
+
         for (int m = 0; m < pick_pose_joint_vals.size(); m++) {
 
             ////////////////// Pick target
@@ -352,8 +365,8 @@ int main(int argc, char** argv)
 
             // TODO: Attach object (ie apple) for return trajectory
 
-            
-            
+
+
             //////////////////// Place target
 
             // Assume we are at a pick pose
@@ -386,7 +399,7 @@ int main(int argc, char** argv)
 
             ROS_INFO("Successfully planned place trajectory.");
             ROS_INFO("Trajectory set %d saved.", m);
-                        
+
             /* Sleep a little to allow time for rviz to display path */
             ros::WallDuration sleep_time(1.0);
             //sleep_time.sleep();
@@ -396,7 +409,7 @@ int main(int argc, char** argv)
 
     ROS_INFO("%d place trajectories created, %d pick trajectories created.", (int) pickTrajLibrary.size(), (int) placeTrajLibrary.size());
     // When we are done write them to file
-    
+
     writePlansToFile(".plans");
     ros::shutdown();
     return 0;
@@ -406,13 +419,12 @@ void writePlansToFile(std::string filename)
 {
 //    std::string pick_filename = "pick" + filename;
 //    std::string place_filename = "place" + filename;
-//    
+//
 //    std::ofstream pick_file(pick_filename.c_str(), std::ios::out | std::ios::binary | std::ios::ate);
 //    pick_file << pickTrajLibrary;
 //    pick_file.close();
-//    
+//
 //    std::ofstream place_file(place_filename.c_str(), std::ios::out | std::ios::binary | std::ios::ate);
 //    place_file << placeTrajLibrary;
 //    place_file.close();
 }
-    

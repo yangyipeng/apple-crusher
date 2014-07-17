@@ -28,7 +28,7 @@ typedef struct {
     unsigned int place_loc_index;
 } ur5_motion_plan;
 
-typedef std::vector<double> joint_vals_t;
+typedef std::vector<double> joint_values_t;
 
 typedef struct {
     double xlim_low;
@@ -42,11 +42,11 @@ typedef struct {
     int zres;
 } rect_grid;
 
-int gridLinspace( std::vector<joint_vals_t>& target_joint_vals, rect_grid& rg, geometry_msgs::Quaternion& orientation, robot_model::RobotModelPtr robot_model, planning_scene::PlanningSceneConstPtr plan_scene);
+int gridLinspace( std::vector<joint_values_t>& target_joint_vals, rect_grid& rg, geometry_msgs::Quaternion& orientation, robot_model::RobotModelPtr robot_model, planning_scene::PlanningSceneConstPtr plan_scene);
 void printPose(const geometry_msgs::Pose& pose);
-void printJointValues(const joint_vals_t& jvals);
-moveit_msgs::Constraints genJointValueConstraint(joint_vals_t jvals, robot_model::RobotModelPtr robot_model);
+void printJointValues(const joint_values_t& jvals);
+moveit_msgs::Constraints genJointValueConstraint(joint_values_t jvals, robot_model::RobotModelPtr robot_model);
 void writePlansToFile(std::string filename);
 
 #endif
-    
+

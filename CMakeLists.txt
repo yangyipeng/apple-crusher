@@ -106,7 +106,12 @@ catkin_package(
 
 ## Declare a cpp executable
 add_executable(demo src/demo.cpp)
+
 add_executable(plan_gen src/plans.cpp)
+
+add_executable(trajectory_library src/main.cpp
+	src/trajectory_library.cpp
+)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
@@ -119,6 +124,10 @@ target_link_libraries(demo
 
 target_link_libraries(plan_gen
    ${catkin_LIBRARIES}
+)
+
+target_link_libraries(trajectory_library
+	 ${catkin_LIBRARIES}
 )
 
 #############

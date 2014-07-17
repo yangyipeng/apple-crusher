@@ -1,0 +1,13 @@
+<launch>
+  <arg name="debug" default="true" />
+  <arg unless="$(arg debug)" name="launch_prefix" value="" />
+  <arg if="$(arg debug)" name="launch_prefix" value="gdb --ex run --args" />
+  <arg name="limited" default="true" />
+  <arg name="sim" default="true"/>
+  
+  <node name="tlib" pkg="apple_crusher" type="trajectory_library" respawn="false" launch-prefix="$(arg launch_prefix)" output="screen">
+    <rosparam command="load" file="$(find ur5_moveit_config)/config/kinematics.yaml"/>
+    <param name="/planning_plugin" value="ompl_interface/OMPLPlanner"/>
+    <rosparam command="load" file="$(find ur5_moveit_config)/config/ompl_planning.yaml"/>
+  </node>
+</launch>
