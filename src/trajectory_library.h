@@ -11,6 +11,7 @@
 #include <moveit/robot_state/conversions.h>
 #include <moveit/planning_interface/planning_interface.h>
 #include <moveit/planning_scene/planning_scene.h>
+#include <moveit/trajectory_processing/iterative_time_parameterization.h>
 #include <moveit/kinematic_constraints/utils.h>
 #include <moveit_msgs/DisplayTrajectory.h>
 #include <moveit_msgs/PlanningScene.h>
@@ -21,6 +22,7 @@
 #include <iostream>
 
 #define UR5_GROUP_NAME "manipulator"
+#define DT_LOCAL_COLLISION_CHECK 0.05
 
 typedef struct {
     // We need both a moveit_msgs::RobotTrajectory and a valid RobotState
@@ -73,6 +75,7 @@ class TrajectoryLibrary
     const robot_model::JointModelGroup* _jmg;
     planning_scene::PlanningScenePtr _plan_scene;
     planning_interface::PlannerManagerPtr _planner;
+    boost::shared_ptr<trajectory_processing::IterativeParabolicTimeParameterization> _time_parametizer;
 
     // Publisher
     ros::Publisher _trajectory_publisher;
@@ -81,6 +84,7 @@ class TrajectoryLibrary
     // Private methods
     std::size_t gridLinspace(std::vector<joint_values_t>& jvals, rect_grid& grid);
     bool planTrajectory(ur5_motion_plan& plan, std::vector<moveit_msgs::Constraints> constraints);
+    void optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr traj_opt, robot_trajectory::RobotTrajectoryPtr traj);
 
     void printPose(const geometry_msgs::Pose& pose);
     void printJointValues(const joint_values_t& jvals);

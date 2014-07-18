@@ -44,6 +44,9 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle nh)
                        << "Available plugins: " << ss.str());
     }
 
+    // Initialize time parameterizer
+    _time_parametizer.reset(new trajectory_processing::IterativeParabolicTimeParameterization());
+
     // Create publisher for rviz
     _trajectory_publisher = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, true);
     _plan_scene_publisher = nh.advertise<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", 1, true);
@@ -110,13 +113,11 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
                     // If IK succeeded
                     joint_values_t j;
                     state->copyJointGroupPositions(UR5_GROUP_NAME, j);
-                    STUB;
                     // Now check for self-collisions
                     if (!_plan_scene->isStateColliding(*state, UR5_GROUP_NAME))
                     {
                         // Add to vector
                         ROS_INFO("Successfully generated joint values for pose %d.", n);
-                        STUB;
                         jvals.push_back(j);
                         break;
                     }
@@ -199,20 +200,105 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
         context->solve(res);
         if (res.error_code_.val == res.error_code_.SUCCESS)
         {
-            moveit_msgs::MotionPlanResponse response;
-            res.getMessage(response);
+            robot_trajectory::RobotTrajectoryPtr traj(res.trajectory_);
 
+            // Do optimization
+            robot_trajectory::RobotTrajectoryPtr traj_opt(new robot_trajectory::RobotTrajectory(_rmodel, UR5_GROUP_NAME));
+            optimizeTrajectory(traj_opt, traj);
+
+            // Do time parameterization again
+            _time_parametizer->computeTimeStamps(*traj_opt);
+
+            // Pack motion plan struct
             moveit::core::robotStateToRobotStateMsg(_plan_scene->getCurrentState(), plan.start_state);
-            moveit::core::robotStateToRobotStateMsg(res.trajectory_->getLastWayPoint(), plan.end_state);
-            plan.trajectory = response.trajectory;
-            plan.num_wpts = res.trajectory_->getWayPointCount();
-            plan.duration = res.trajectory_->getWaypointDurationFromStart(plan.num_wpts-1);
+            moveit::core::robotStateToRobotStateMsg(traj_opt->getLastWayPoint(), plan.end_state);
+            plan.num_wpts = traj_opt->getWayPointCount();
+            plan.duration = traj_opt->getWaypointDurationFromStart(plan.num_wpts-1);
+            traj_opt->getRobotTrajectoryMsg(plan.trajectory);
+
+            ROS_INFO("Duration = %f.", plan.duration);
             return true;
         }
         // else planner failed
         tries++;
     }
     return false;
+}
+
+void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr traj_opt, const robot_trajectory::RobotTrajectoryPtr traj)
+{
+    // Make a copy
+    *traj_opt = *traj;
+
+    std::size_t wpt_count = traj->getWayPointCount();
+    ROS_INFO("Optimize starts with %d waypoints.", (int) wpt_count);
+
+    // Iterate forwards from the first waypoint
+    for (std::size_t i=0; i < wpt_count; i++)
+    {
+        // Do time parameterization
+        _time_parametizer->computeTimeStamps(*traj_opt);
+
+        // Check for shortcut to other waypoint
+        // Starting from the end and going backwards
+        for (std::size_t j=(wpt_count-1); j > i; j--)
+        {
+            // Define shortcut as straight line in joint space between waypoints i and j
+            robot_state::RobotState wpt_i = traj_opt->getWayPoint(i);
+            robot_state::RobotState wpt_j = traj_opt->getWayPoint(j);
+
+            // Generate intermediate states and check each for collisions
+            double duration = traj_opt->getWaypointDurationFromStart(j) - traj_opt->getWaypointDurationFromStart(i);
+            std::size_t step_count = duration / DT_LOCAL_COLLISION_CHECK;
+            double step_scaled;
+            robot_state::RobotState step_state(_rmodel);
+            bool shortcut_invalid = false;
+
+            for (std::size_t s=1; s < step_count; s++)
+            {
+                step_scaled = s / ((float) step_count);
+                // Calculate intermediate state at step s
+                wpt_i.interpolate(wpt_j, step_scaled, step_state);
+                // Check state for collision
+                if ( _plan_scene->isStateColliding(step_state) )
+                {
+                    shortcut_invalid = true;
+                    break;
+                }
+            }
+
+            // If the shortcut is valid
+            if (!shortcut_invalid)
+            {
+                //ROS_INFO("Shortcut found between nodes %d and %d.", (int) i, (int) j);
+                // Create new trajectory object with only neccessary endpoints
+                robot_trajectory::RobotTrajectory temp_traj(_rmodel, UR5_GROUP_NAME);
+                // Copy in waypoints before the shortcut
+                for (std::size_t n=0; n <= i; n++)
+                {
+                    robot_state::RobotStatePtr state = traj_opt->getWayPointPtr(n);
+                    temp_traj.insertWayPoint(n, state, 0.0);
+                }
+                // Copy in waypoints after the shortcut
+                for (std::size_t n=j; n < wpt_count; n++)
+                {
+                    robot_state::RobotStatePtr state = traj_opt->getWayPointPtr(n);
+                    temp_traj.insertWayPoint(n - (j-i), state, 0.0);
+                }
+                ROS_ASSERT(temp_traj.getWayPointCount() == (wpt_count - (j-i-1)));
+
+                // Copy temporary trajectory
+                *traj_opt = temp_traj;
+                wpt_count = traj_opt->getWayPointCount();
+                break; // break out of j loop
+            }
+
+            // Otherwise shortcut is invalid, so move on
+        }
+    }
+
+    ROS_INFO("Successfully trimmed %d nodes.", (int) (traj->getWayPointCount() - traj_opt->getWayPointCount()) );
+    return;
 }
 
 moveit_msgs::Constraints TrajectoryLibrary::genPoseConstraint(geometry_msgs::Pose pose_goal)
@@ -407,10 +493,10 @@ void TrajectoryLibrary::demo()
         traj.setRobotTrajectoryMsg(start_state, plan.trajectory);
         // Get trajectory data
         num_wpts = traj.getWayPointCount();
-        duration = plan.duration;
+        duration += plan.duration;
         j_dist = start_state.distance(end_state);
         ROS_INFO("Start state is %f from previous end state.", j_dist);
-        ROS_INFO("Trajectory has %d nodes and takes %f seconds.", (int) num_wpts, duration);
+        ROS_INFO("Trajectory has %d nodes and takes %f seconds.", (int) num_wpts, plan.duration);
 
         display_trajectory.trajectory.push_back(plan.trajectory);
         _trajectory_publisher.publish(display_trajectory);
@@ -420,7 +506,8 @@ void TrajectoryLibrary::demo()
 
         _trajectory_publisher.publish(display_trajectory);
 
-        sleep(5);
+        ros::WallDuration sleep_time(duration);
+        sleep_time.sleep();
     }
 
     return;

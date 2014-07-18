@@ -16,10 +16,10 @@ int main(int argc, char** argv)
     pickVol.orientation.z = 0;
     pickVol.xlim_low = 0.30;
     pickVol.xlim_high = 0.50;
-    pickVol.xres = 5;
+    pickVol.xres = 3;
     pickVol.ylim_high = -0.25;
     pickVol.ylim_low = -0.60;
-    pickVol.yres = 4;
+    pickVol.yres = 2;
     pickVol.zlim_low = 0.40;
     pickVol.zlim_high = 0.60;
     pickVol.zres = 3;
@@ -34,10 +34,10 @@ int main(int argc, char** argv)
     placeVol.xres = 1;
     placeVol.ylim_low = 0.4;
     placeVol.ylim_high = 0.6;
-    placeVol.yres = 3;
+    placeVol.yres = 1;
     placeVol.zlim_low = 0.3;
     placeVol.zlim_high = 0.50;
-    placeVol.zres = 3;
+    placeVol.zres = 1;
 
     /* Generate target joint values */
     ROS_INFO("Calculating target joint values.");
