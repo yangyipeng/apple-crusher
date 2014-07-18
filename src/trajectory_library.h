@@ -14,6 +14,7 @@
 #include <moveit/kinematic_constraints/utils.h>
 #include <moveit_msgs/DisplayTrajectory.h>
 #include <moveit_msgs/PlanningScene.h>
+#include <moveit_msgs/DisplayRobotState.h>
 #include <moveit/kdl_kinematics_plugin/kdl_kinematics_plugin.h>
 
 #include "boost/scoped_ptr.hpp"
@@ -26,8 +27,10 @@ typedef struct {
     moveit_msgs::RobotTrajectory trajectory;
     moveit_msgs::RobotState start_state;
     moveit_msgs::RobotState end_state;
-    unsigned int pick_loc_index;
-    unsigned int place_loc_index;
+    int pick_loc_index;
+    int place_loc_index;
+    double duration; // seconds
+    int num_wpts;
 } ur5_motion_plan;
 
 typedef std::vector<double> joint_values_t;
@@ -72,9 +75,8 @@ class TrajectoryLibrary
     planning_interface::PlannerManagerPtr _planner;
 
     // Publisher
-    ros::Publisher _pub;
-
-    kinematics::KinematicsBasePtr _ik_solver;
+    ros::Publisher _trajectory_publisher;
+    ros::Publisher _plan_scene_publisher;
 
     // Private methods
     std::size_t gridLinspace(std::vector<joint_values_t>& jvals, rect_grid& grid);
@@ -92,7 +94,11 @@ public:
     TrajectoryLibrary(ros::NodeHandle nh);
 
     void generateJvals(rect_grid& pick_grid, rect_grid& place_grid);
-    int buildLibrary();
+    int build();
+    void demo();
+
+    bool getPickPlan(ur5_motion_plan& plan, int place_start, int pick_end);
+    bool getPlacePlan(ur5_motion_plan& plan, int pick_start, int place_end);
 
     inline std::size_t getNumTrajectories() { return _num_trajects; }
 

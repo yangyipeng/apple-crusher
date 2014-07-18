@@ -45,10 +45,11 @@ int main(int argc, char** argv)
 
     /* Generate trajectories */
     ROS_INFO("Building trajectory library.");
-    tlib.buildLibrary();
+    tlib.build();
 
-    ROS_INFO("%d trajectories generated. Exiting.", (int) tlib.getNumTrajectories());
-
+    ROS_INFO("Hit enter to begin demo.");
+    std::cin.ignore();
+    tlib.demo();
 
     ros::shutdown();
     return 0;

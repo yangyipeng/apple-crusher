@@ -45,7 +45,8 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle nh)
     }
 
     // Create publisher for rviz
-    _pub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, true);
+    _trajectory_publisher = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, true);
+    _plan_scene_publisher = nh.advertise<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", 1, true);
 
     return;
 }
@@ -94,16 +95,12 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
                 geo_pose.position.z = grid.zlim_low + k*dk;
                 geo_pose.orientation = grid.orientation;
                 bool ik_success;
-                STUB;
                 // Try fixed number of times to find valid, non-colliding solution
                 int tries;
                 for (tries = 0; tries < 3; tries++)
                 {
                     // Do IK
-                    ROS_INFO("Can do IK? : %d.", _jmg->canSetStateFromIK(UR5_GROUP_NAME));
-                    STUB;
                     ik_success = state->setFromIK(_jmg, geo_pose, 5, 0.1);
-                    STUB;
                     if (!ik_success)
                     {
                         ROS_WARN("Could not solve IK for pose %d: Skipping.", n);
@@ -208,6 +205,8 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
             moveit::core::robotStateToRobotStateMsg(_plan_scene->getCurrentState(), plan.start_state);
             moveit::core::robotStateToRobotStateMsg(res.trajectory_->getLastWayPoint(), plan.end_state);
             plan.trajectory = response.trajectory;
+            plan.num_wpts = res.trajectory_->getWayPointCount();
+            plan.duration = res.trajectory_->getWaypointDurationFromStart(plan.num_wpts-1);
             return true;
         }
         // else planner failed
@@ -243,7 +242,7 @@ moveit_msgs::Constraints TrajectoryLibrary::genJointValueConstraint(joint_values
     return kinematic_constraints::constructGoalConstraints(state, _jmg, 0.01);
 }
 
-int TrajectoryLibrary::buildLibrary()
+int TrajectoryLibrary::build()
 {
     /* Check that target grids have been generated */
     if (_num_pick_targets == 0 || _num_place_targets == 0)
@@ -257,7 +256,7 @@ int TrajectoryLibrary::buildLibrary()
     /* Iterate through place targets */
     for (int n = 0; n < _num_place_targets; n++)
     {
-        sleep(5);
+        //sleep(5);
         // Solve IK for place position n
         ROS_INFO("Jumping to place pose %d", n);
         robot_state::RobotState place_state(_rmodel);
@@ -310,7 +309,13 @@ int TrajectoryLibrary::buildLibrary()
             display_trajectory.trajectory_start = pick_traj.start_state;
             display_trajectory.trajectory.push_back(pick_traj.trajectory);
             display_trajectory.trajectory.push_back(place_traj.trajectory);
-            _pub.publish(display_trajectory);
+            _trajectory_publisher.publish(display_trajectory);
+
+            // Now record indices of pick and place locations
+            pick_traj.pick_loc_index = m;
+            pick_traj.place_loc_index = n;
+            place_traj.pick_loc_index = m;
+            place_traj.place_loc_index = n;
 
             // Store trajectories in library
             _pick_trajects.push_back(pick_traj);
@@ -326,9 +331,139 @@ int TrajectoryLibrary::buildLibrary()
             ROS_INFO("Trajectory set %d saved.", (int) _num_trajects);
 
             /* Sleep a little to allow time for rviz to display path */
-            sleep(1);
+            //sleep(1);
         }
     }
 
+    ROS_INFO("Generated %d trajectories out of a theoretical %d.", (int) _num_trajects, (int) (_num_pick_targets*_num_place_targets) );
     return _num_trajects;
+}
+
+void TrajectoryLibrary::demo()
+{
+    srand(0);
+
+    int n; // Take n to be our place state index
+    int m; // Take m to be our pick state index
+
+    bool success;
+    ur5_motion_plan plan;
+    robot_trajectory::RobotTrajectory traj(_rmodel, UR5_GROUP_NAME);
+    robot_state::RobotState end_state(_rmodel);
+    robot_state::RobotState start_state(_rmodel);
+    std::size_t num_wpts;
+    double duration;
+    double j_dist;
+
+    n = rand() % _num_place_targets; // Pick random place target
+    end_state.setJointGroupPositions(_jmg, _place_jvals[n]);
+
+    while (1)
+    {
+        // Pick path
+
+        int tries = 0;
+        do {
+            // Now select random pick target
+            m = rand() % _num_pick_targets;
+            // Fetch plan
+            success = getPickPlan(plan, n, m);
+            tries++;
+        } while (!success);\
+
+        ROS_INFO("Found pick trajectory from place %d to pick %d after %d tries.", n, m, tries);
+
+        // Build RobotTrajectory and RobotState objects from message
+        robot_state::robotStateMsgToRobotState(plan.start_state, start_state);
+        traj.setRobotTrajectoryMsg(start_state, plan.trajectory);
+        // Get trajectory data
+        num_wpts = traj.getWayPointCount();
+        duration = plan.duration;
+        j_dist = start_state.distance(end_state);
+        ROS_INFO("Start state is %f from previous end state.", j_dist);
+        ROS_INFO("Trajectory has %d nodes and takes %f seconds.", (int) num_wpts, duration);
+
+        moveit_msgs::DisplayTrajectory display_trajectory;
+        display_trajectory.trajectory_start = plan.start_state;
+        display_trajectory.trajectory.push_back(plan.trajectory);
+
+        // Update end_state
+        robot_state::robotStateMsgToRobotState(plan.end_state, end_state);
+
+        /* Place path */
+        tries = 0;
+        do {
+            // Now select random place target
+            n = rand() % _num_place_targets;
+            // Fetch plan
+            success = getPlacePlan(plan, m, n);
+            tries++;
+        } while (!success);
+
+        ROS_INFO("Found place trajectory from pick %d to place %d after %d tries.", m, n, tries);
+
+        // Build RobotTrajectory and RobotState objects from message
+        robot_state::robotStateMsgToRobotState(plan.start_state, start_state);
+        traj.setRobotTrajectoryMsg(start_state, plan.trajectory);
+        // Get trajectory data
+        num_wpts = traj.getWayPointCount();
+        duration = plan.duration;
+        j_dist = start_state.distance(end_state);
+        ROS_INFO("Start state is %f from previous end state.", j_dist);
+        ROS_INFO("Trajectory has %d nodes and takes %f seconds.", (int) num_wpts, duration);
+
+        display_trajectory.trajectory.push_back(plan.trajectory);
+        _trajectory_publisher.publish(display_trajectory);
+
+        // Update end_state
+        robot_state::robotStateMsgToRobotState(plan.end_state, end_state);
+
+        _trajectory_publisher.publish(display_trajectory);
+
+        sleep(5);
+    }
+
+    return;
+}
+
+bool TrajectoryLibrary::getPickPlan(ur5_motion_plan &plan, int place_start, int pick_end)
+{
+    // For now just do linear search
+    for (int i=0; i < _num_trajects; i++)
+    {
+        if (_pick_trajects[i].place_loc_index == place_start)
+        {
+            if (_pick_trajects[i].pick_loc_index == pick_end)
+            {
+                plan = _pick_trajects[i];
+                return true;
+            }
+            // TODO: If we assume certain order of trajectories in vector.
+            // If pick location doesn't match up, maybe we can skip ahead a bit?
+        }
+    }
+
+    // If no match
+    return false;
+}
+
+bool TrajectoryLibrary::getPlacePlan(ur5_motion_plan &plan, int pick_start, int place_end)
+{
+    // For now just do linear search
+    for (int i=0; i < _num_trajects; i++)
+    {
+        if (_place_trajects[i].place_loc_index == place_end)
+        {
+            if (_place_trajects[i].pick_loc_index == pick_start)
+            {
+                plan = _place_trajects[i];
+                return true;
+            }
+            // TODO: If we assume certain order of trajectories in vector.
+            // If pick location doesn't match up, maybe we can skip ahead a bit?
+        }
+    }
+
+    // If no match
+    return false;
 }
