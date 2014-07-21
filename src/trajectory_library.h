@@ -3,6 +3,10 @@
 
 #include <pluginlib/class_loader.h>
 #include <ros/ros.h>
+#include <fstream>
+#include <iostream>
+#include <vector>
+#include <string.h>
 
 // MoveIt!
 #include <moveit/robot_model_loader/robot_model_loader.h>
@@ -93,6 +97,11 @@ class TrajectoryLibrary
     moveit_msgs::Constraints genJointValueConstraint(joint_values_t jvals);
 
     bool ikValidityCallback(robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals);
+
+    //write and read
+
+    bool filewrite(std::vector<ur5_motion_plan> &Library, const char* filename, bool debug);
+    bool fileread(std::vector<ur5_motion_plan> &Library, const char* filename, bool debug);
 
 public:
     TrajectoryLibrary(ros::NodeHandle nh);

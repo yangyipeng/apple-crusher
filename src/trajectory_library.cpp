@@ -422,6 +422,13 @@ int TrajectoryLibrary::build()
     }
 
     ROS_INFO("Generated %d trajectories out of a theoretical %d.", (int) _num_trajects, (int) (_num_pick_targets*_num_place_targets) );
+
+//    //SAVE DATA TO .bin FILE
+//    ROS_INFO("--------------SAVING!!!!-------------------");
+//    bool pickcheck = filewrite(_pick_trajects, "pickplan.bin",0);
+//    bool placecheck = filewrite(_place_trajects, "placeplan.bin",0);
+//    ROS_INFO("%d-----------DONE!!!!!!-----------------%d",pickcheck,placecheck);
+
     return _num_trajects;
 }
 
@@ -440,6 +447,12 @@ void TrajectoryLibrary::demo()
     std::size_t num_wpts;
     double duration;
     double j_dist;
+
+//    //LOAD DATA FROM .bin FILE
+//    ROS_INFO("--------------LOADING!!!!-------------------");
+//    bool pickcheck = fileread(_pick_trajects, "pickplan.bin",0);
+//    bool placecheck = fileread(_place_trajects, "placeplan.bin",0);
+//    ROS_INFO("%d-----------DONE!!!!!!-----------------%d",pickcheck,placecheck);
 
     n = rand() % _num_place_targets; // Pick random place target
     end_state.setJointGroupPositions(_jmg, _place_jvals[n]);
@@ -553,4 +566,199 @@ bool TrajectoryLibrary::getPlacePlan(ur5_motion_plan &plan, int pick_start, int 
 
     // If no match
     return false;
+}
+
+bool TrajectoryLibrary::filewrite(std::vector<ur5_motion_plan> &Library, const char* filename, bool debug)
+{
+    bool check;
+    int itersize = Library.size();
+    int nodesize = 0;
+
+    std::ofstream file;
+    file.open (filename, std::ofstream::out | std::ofstream::binary);
+    if(file.is_open())
+    {
+        file.write((char *)(&itersize),sizeof(itersize));
+        if (debug == 1) ROS_INFO("%d",itersize);
+        for (size_t n = 0; n < itersize; n++)
+        {
+            //RobotTrajectory -> JointTrajectory -> JointTrajectoryPoints
+            nodesize = Library[n].trajectory.joint_trajectory.points.size();
+            ROS_INFO("%d",nodesize);
+            file.write((char *)(&nodesize),sizeof(nodesize));
+            for (size_t idx = 0; idx < nodesize; idx++)
+            {
+                for (size_t i=0; i < 6; i++) file.write((char *)(&Library[n].trajectory.joint_trajectory.points[idx].positions[i]),sizeof(double));
+                file.write((char *)(&Library[n].trajectory.joint_trajectory.points[idx].time_from_start),sizeof(ros::Duration));
+            }
+
+            //RobotTrajectory -> JointTrajectory -> Header
+            file.write((char *)(&Library[n].trajectory.joint_trajectory.header.seq),sizeof(uint32_t));
+            file.write((char *)(&Library[n].trajectory.joint_trajectory.header.stamp),sizeof(ros::Time));
+            file << Library[n].trajectory.joint_trajectory.header.frame_id << '\n';
+
+            //RobotTrajectory -> JointTrajectory -> joint_names
+            for (size_t i=0; i < 6; i++) file << Library[n].trajectory.joint_trajectory.joint_names[i] << '\n';
+
+
+            //start_state
+            //RobotState -> JointState -> Header
+            file.write((char *)(&Library[n].start_state.joint_state.header.seq),sizeof(uint32_t));
+            file.write((char *)(&Library[n].start_state.joint_state.header.stamp),sizeof(ros::Time));
+            file << Library[n].start_state.joint_state.header.frame_id << '\n';
+            //RobotState -> JointState -> stirng & position
+            for (size_t j = 0; j < 6; j++)
+            {
+                file << Library[n].start_state.joint_state.name[j] << '\n';
+                file.write((char *)(&Library[n].start_state.joint_state.position[j]),sizeof(double));
+            }
+
+            //end_state
+            //RobotState -> JointState -> Header
+            file.write((char *)(&Library[n].end_state.joint_state.header.seq),sizeof(uint32_t));
+            file.write((char *)(&Library[n].end_state.joint_state.header.stamp),sizeof(ros::Time));
+            file << Library[n].end_state.joint_state.header.frame_id << '\n';
+            //RobotState -> JointState -> stirng & position
+            for (size_t j = 0; j < 6; j++)
+            {
+                file << Library[n].end_state.joint_state.name[j] << '\n';
+                file.write((char *)(&Library[n].end_state.joint_state.position[j]),sizeof(double));
+            }
+
+            //index
+            file.write((char *)(&Library[n].pick_loc_index),sizeof(unsigned int));
+            file.write((char *)(&Library[n].place_loc_index),sizeof(unsigned int));
+
+
+        }
+
+//        //string test;
+//        Library[0].trajectory.joint_trajectory.header.frame_id = "This is a Test. Also Im Hungry!!";
+//        std::cout << Library[0].trajectory.joint_trajectory.header.frame_id << '\n';
+//        file << Library[0].trajectory.joint_trajectory.header.frame_id  << '\n';
+
+        check = 1;
+        file.close();
+    }
+    else check = 0;
+
+    return check;
+}
+
+bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const char* filename, bool debug)
+{
+    bool check;
+    int nodesize;
+    int itersize;
+
+    //int nodeset = 10;
+    double v,w,x,y;
+    uint32_t temp_32;
+    std::string temp_string;
+    std::string blank_string;
+    ros::Time temp_time;
+    ros::Duration z;
+
+    ur5_motion_plan ur5;
+    ur5_motion_plan empty;
+    std::vector<int> temp;
+    trajectory_msgs::JointTrajectoryPoint temp_points;
+    trajectory_msgs::JointTrajectoryPoint blank;
+
+    std::ifstream info;
+    info.open(filename,std::ifstream::in | std::ofstream::binary);
+
+    if(info.is_open())
+    {
+        //Trajectory
+        info.read((char*)(&itersize),sizeof(itersize));
+        if (debug == 1) ROS_INFO("%d",itersize);
+        for (size_t n = 0; n < itersize; n++)
+        {
+            info.read((char*)(&nodesize),sizeof(nodesize));
+            temp.push_back(nodesize);
+            if (debug == 1) ROS_INFO("%d",nodesize);
+            for (size_t idx = 0; idx < nodesize; idx++)
+            {
+                for (size_t i=0; i<6; i++)
+                {
+                    info.read((char *)(&v),sizeof(v));
+                    temp_points.positions.push_back(v);
+                }
+                info.read((char *)(&z),sizeof(z));
+                //ros::Duration d(z);
+                temp_points.time_from_start = z;
+                ur5.trajectory.joint_trajectory.points.push_back(temp_points);
+                temp_points = blank;
+
+            }
+
+            //RobotTrajectory -> JointTrajectory -> Header
+            info.read((char *)(&ur5.trajectory.joint_trajectory.header.seq),sizeof(uint32_t));
+            info.read((char *)(&ur5.trajectory.joint_trajectory.header.stamp),sizeof(ros::Time));
+            getline (info,ur5.trajectory.joint_trajectory.header.frame_id);
+
+            //RobotTrajectory -> JointTrajectory -> joint_names
+            for (size_t i=0; i < 6; i++)
+            {
+                getline(info,temp_string);
+                ur5.trajectory.joint_trajectory.joint_names.push_back(temp_string);
+                temp_string = blank_string;
+            }
+
+            //start_state
+            //RobotState -> JointState -> Header
+            info.read((char *)(&ur5.start_state.joint_state.header.seq),sizeof(uint32_t));
+            info.read((char *)(&ur5.start_state.joint_state.header.stamp),sizeof(ros::Time));
+            getline (info,ur5.start_state.joint_state.header.frame_id);
+
+            //RobotState -> JointState -> stirng & position
+            for (size_t j = 0; j < 6; j++)
+            {
+                getline(info,temp_string);
+                ur5.start_state.joint_state.name.push_back(temp_string);
+                temp_string = blank_string;
+
+                info.read((char *)(&v),sizeof(v));
+                ur5.start_state.joint_state.position.push_back(v);
+            }
+
+            //end_state
+            //RobotState -> JointState -> Header
+            info.read((char *)(&ur5.end_state.joint_state.header.seq),sizeof(uint32_t));
+            info.read((char *)(&ur5.end_state.joint_state.header.stamp),sizeof(ros::Time));
+            getline (info,ur5.end_state.joint_state.header.frame_id);
+
+            //RobotState -> JointState -> stirng & position
+            for (size_t j = 0; j < 6; j++)
+            {
+                getline(info,temp_string);
+                ur5.end_state.joint_state.name.push_back(temp_string);
+                temp_string = blank_string;
+
+                info.read((char *)(&v),sizeof(v));
+                ur5.end_state.joint_state.position.push_back(v);
+
+            }
+
+            //Index
+            info.read((char *)(&ur5.pick_loc_index),sizeof(unsigned int));
+            info.read((char *)(&ur5.place_loc_index),sizeof(unsigned int));
+
+            Library.push_back(ur5);
+            ur5 = empty;
+        }
+
+//        //string test;
+//        std::string James;
+//        getline (info,James);
+//        std::cout << James << '\n';
+
+        check = 1;
+        info.close();
+    }
+    else check = 0;
+
+    return check;
+
 }
