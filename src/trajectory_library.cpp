@@ -448,11 +448,11 @@ void TrajectoryLibrary::demo()
     double duration;
     double j_dist;
 
-//    //LOAD DATA FROM .bin FILE
-//    ROS_INFO("--------------LOADING!!!!-------------------");
-//    bool pickcheck = fileread(_pick_trajects, "pickplan.bin",0);
-//    bool placecheck = fileread(_place_trajects, "placeplan.bin",0);
-//    ROS_INFO("%d-----------DONE!!!!!!-----------------%d",pickcheck,placecheck);
+    //LOAD DATA FROM .bin FILE
+    ROS_INFO("--------------LOADING!!!!-------------------");
+    bool pickcheck = fileread(_pick_trajects, "pickplan.bin",0);
+    bool placecheck = fileread(_place_trajects, "placeplan.bin",0);
+    ROS_INFO("%d-----------DONE!!!!!!-----------------%d",pickcheck,placecheck);
 
     n = rand() % _num_place_targets; // Pick random place target
     end_state.setJointGroupPositions(_jmg, _place_jvals[n]);
@@ -652,12 +652,12 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const ch
     int itersize;
 
     //int nodeset = 10;
-    double v,w,x,y;
-    uint32_t temp_32;
+    double temp_double;
     std::string temp_string;
     std::string blank_string;
-    ros::Time temp_time;
-    ros::Duration z;
+//    uint32_t temp_uint32;
+//    ros::Time temp_time;
+    ros::Duration temp_duration;
 
     ur5_motion_plan ur5;
     ur5_motion_plan empty;
@@ -682,12 +682,12 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const ch
             {
                 for (size_t i=0; i<6; i++)
                 {
-                    info.read((char *)(&v),sizeof(v));
-                    temp_points.positions.push_back(v);
+                    info.read((char *)(&temp_double),sizeof(temp_double));
+                    temp_points.positions.push_back(temp_double);
                 }
-                info.read((char *)(&z),sizeof(z));
+                info.read((char *)(&temp_duration),sizeof(temp_duration));
                 //ros::Duration d(z);
-                temp_points.time_from_start = z;
+                temp_points.time_from_start = temp_duration;
                 ur5.trajectory.joint_trajectory.points.push_back(temp_points);
                 temp_points = blank;
 
@@ -719,8 +719,8 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const ch
                 ur5.start_state.joint_state.name.push_back(temp_string);
                 temp_string = blank_string;
 
-                info.read((char *)(&v),sizeof(v));
-                ur5.start_state.joint_state.position.push_back(v);
+                info.read((char *)(&temp_double),sizeof(temp_double));
+                ur5.start_state.joint_state.position.push_back(temp_double);
             }
 
             //end_state
@@ -736,8 +736,8 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const ch
                 ur5.end_state.joint_state.name.push_back(temp_string);
                 temp_string = blank_string;
 
-                info.read((char *)(&v),sizeof(v));
-                ur5.end_state.joint_state.position.push_back(v);
+                info.read((char *)(&temp_double),sizeof(temp_double));
+                ur5.end_state.joint_state.position.push_back(temp_double);
 
             }
 
