@@ -83,6 +83,7 @@ class TrajectoryLibrary
     planning_scene::PlanningScenePtr _plan_scene;
     planning_interface::PlannerManagerPtr _planner;
     boost::shared_ptr<trajectory_processing::IterativeParabolicTimeParameterization> _time_parametizer;
+    trajectory_execution_manager::TrajectoryExecutionManagerPtr _execution_manager;
 
     // Publisher
     ros::Publisher _trajectory_publisher;

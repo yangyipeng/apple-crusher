@@ -47,6 +47,13 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle nh)
     // Initialize time parameterizer
     _time_parametizer.reset(new trajectory_processing::IterativeParabolicTimeParameterization());
 
+    // Initialize trajectory manager
+    _execution_manager.reset(new trajectory_execution_manager::TrajectoryExecutionManager(_rmodel));
+    if (!_execution_manager->ensureActiveControllersForGroup(UR5_GROUP_NAME))
+    {
+        ROS_ERROR("Controllers for joint group are not active.");
+    }
+
     // Create publisher for rviz
     _trajectory_publisher = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, true);
     _plan_scene_publisher = nh.advertise<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", 1, true);
@@ -552,6 +559,8 @@ void TrajectoryLibrary::demo()
         // Update end_state
         robot_state::robotStateMsgToRobotState(plan.end_state, end_state);
 
+        _execution_manager->pushAndExecute(plan.trajectory);
+
         /* Place path */
         tries = 0;
         do {
@@ -585,6 +594,8 @@ void TrajectoryLibrary::demo()
         _plan_scene_publisher.publish(scene_msg);
 
         _trajectory_publisher.publish(display_trajectory);
+
+        _execution_manager->pushAndExecute(plan.trajectory);
 
         ros::WallDuration sleep_time(duration);
         sleep_time.sleep();
