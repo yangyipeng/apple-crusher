@@ -1,0 +1,19 @@
+<launch>
+  <arg name="debug" default="false" />
+  <arg unless="$(arg debug)" name="launch_prefix" value="" />
+  <arg if="$(arg debug)" name="launch_prefix" value="gdb --ex run --args" />
+  <arg name="limited" default="true" />
+
+  <include file="$(find ur5_moveit_config)/launch/ur5_moveit_planning_execution.launch">
+    <arg name="limited" value="$(arg limited)"/>
+  </include>
+ 
+  <include file="$(find ur5_moveit_config)/launch/trajectory_execution.launch.xml"/>
+
+  <include file="$(find ur_bringup)/launch/ur5_bringup.launch">
+    <arg name="limited" value="$(arg limited)"/>
+    <arg name="robot_ip" value="0.0.0.0"/>
+    <arg name="reverse_port" value="80"/>
+  </include>
+
+</launch>

@@ -11,6 +11,8 @@ find_package(catkin REQUIRED COMPONENTS
 	moveit_msgs
   moveit_ros_planning_interface
 	geometry_msgs
+  shape_msgs
+	tf
   )
 
 ## System dependencies are found with CMake's conventions
@@ -100,17 +102,17 @@ catkin_package(
    )
 
 ## Declare a cpp library
-# add_library(robot_arm
-#   src/${PROJECT_NAME}/robot_arm.cpp
-# )
+add_library(tlib
+   src/trajectory_library.cpp
+)
 
 ## Declare a cpp executable
-add_executable(demo src/demo.cpp)
+add_executable(build_lib 
+   src/build_lib.cpp
+)
 
-add_executable(plan_gen src/plans.cpp)
-
-add_executable(trajectory_library src/main.cpp
-	src/trajectory_library.cpp
+add_executable(demo 
+   src/demo.cpp
 )
 
 ## Add cmake target dependencies of the executable/library
@@ -118,16 +120,19 @@ add_executable(trajectory_library src/main.cpp
 # add_dependencies(robot_arm_node robot_arm_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(demo
+
+target_link_libraries(tlib
    ${catkin_LIBRARIES}
 )
 
-target_link_libraries(plan_gen
-   ${catkin_LIBRARIES}
-)
-
-target_link_libraries(trajectory_library
+target_link_libraries(build_lib
+   tlib
 	 ${catkin_LIBRARIES}
+)
+
+target_link_libraries(demo
+   tlib
+   ${catkin_LIBRARIES}
 )
 
 #############

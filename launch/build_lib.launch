@@ -1,0 +1,18 @@
+<launch>
+  <arg name="debug" default="false" />
+  <arg unless="$(arg debug)" name="launch_prefix" value="" />
+  <arg if="$(arg debug)" name="launch_prefix" value="gdb --ex run --args" />
+  <arg name="limited" default="true" />
+  <arg name="sim" default="true"/>
+
+  <include file="$(find ur5_moveit_config)/launch/planning_context.launch">
+    <arg name="load_robot_description" value="true"/>
+    <arg name="limited" value="$(arg limited)"/>
+  </include>
+  
+  <node name="build_lib" pkg="apple_crusher" type="build_lib" respawn="false" launch-prefix="$(arg launch_prefix)" output="screen">
+    <rosparam command="load" file="$(find ur5_moveit_config)/config/kinematics.yaml"/>
+    <param name="/planning_plugin" value="ompl_interface/OMPLPlanner"/>
+    <rosparam command="load" file="$(find ur5_moveit_config)/config/ompl_planning.yaml"/>
+  </node>
+</launch>
