@@ -8,6 +8,7 @@
 #include <vector>
 #include <string.h>
 
+#include <eigen_conversions/eigen_msg.h>
 // MoveIt!
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
@@ -16,10 +17,12 @@
 #include <moveit/planning_interface/planning_interface.h>
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit/trajectory_processing/iterative_time_parameterization.h>
+#include <moveit/trajectory_execution_manager/trajectory_execution_manager.h>
 #include <moveit/kinematic_constraints/utils.h>
 #include <moveit_msgs/DisplayTrajectory.h>
 #include <moveit_msgs/PlanningScene.h>
 #include <moveit_msgs/DisplayRobotState.h>
+#include <moveit_msgs/AttachedCollisionObject.h>
 #include <moveit/kdl_kinematics_plugin/kdl_kinematics_plugin.h>
 
 #include "boost/scoped_ptr.hpp"
@@ -89,6 +92,7 @@ class TrajectoryLibrary
     std::size_t gridLinspace(std::vector<joint_values_t>& jvals, rect_grid& grid);
     bool planTrajectory(ur5_motion_plan& plan, std::vector<moveit_msgs::Constraints> constraints);
     void optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr traj_opt, robot_trajectory::RobotTrajectoryPtr traj);
+    void timeWarpTrajectory(robot_trajectory::RobotTrajectoryPtr traj, double slow_factor);
 
     void printPose(const geometry_msgs::Pose& pose);
     void printJointValues(const joint_values_t& jvals);
@@ -106,6 +110,7 @@ class TrajectoryLibrary
 public:
     TrajectoryLibrary(ros::NodeHandle nh);
 
+    void initWorld();
     void generateJvals(rect_grid& pick_grid, rect_grid& place_grid);
     int build();
     void demo();

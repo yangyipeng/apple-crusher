@@ -54,6 +54,47 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle nh)
     return;
 }
 
+void TrajectoryLibrary::initWorld()
+{
+    collision_detection::WorldPtr world = _plan_scene->getWorldNonConst();
+    collision_detection::AllowedCollisionMatrix acm = _plan_scene->getAllowedCollisionMatrixNonConst();
+
+    // Define workspace limits with planes
+    shapes::ShapeConstPtr ground_plane(new shapes::Plane(0,0,1,0));
+    geometry_msgs::Pose pose;
+    pose.orientation.w = 1;
+    pose.orientation.x = 0;
+    pose.orientation.y = 0;
+    pose.orientation.z = 0;
+    pose.position.x = 0;
+    pose.position.y = 0;
+    pose.position.z = 0;
+    Eigen::Affine3d eigen_pose;
+    tf::poseMsgToEigen(pose, eigen_pose);
+    world->addToObject("workspace_bounds", ground_plane, eigen_pose);
+    acm.setEntry("workspace_bounds", "world", true);
+    acm.setEntry("workspace_bounds", "base_link", true);
+
+//    // Add obstructo-sphere in middle of workspace
+//    shapes::ShapeConstPtr obstructo(new shapes::Sphere(0.2));
+//    pose.position.x = 0;
+//    pose.position.y = 0;
+//    pose.position.z = 0.7;
+//    tf::poseMsgToEigen(pose, eigen_pose);
+//    world->addToObject("obstructo_sphere", obstructo, eigen_pose);
+//    acm.setEntry("obstructo_sphere", "world", true);
+//    acm.setEntry("obstructo_sphere", "base_link", true);
+//    acm.setEntry("obstructo_sphere", "shoulder_link", true);
+
+    // Publish updated planning scene
+    acm.print(std::cout);
+    moveit_msgs::PlanningScene scene_msg;
+    _plan_scene->getPlanningSceneMsg(scene_msg);
+    _plan_scene_publisher.publish(scene_msg);
+
+    return;
+}
+
 std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, rect_grid& grid)
 {
     double di, dj, dk;
@@ -78,11 +119,6 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
 
     geometry_msgs::Pose geo_pose;
     robot_state::RobotStatePtr state(new robot_state::RobotState(_rmodel));
-    state->setToDefaultValues();
-    const robot_state::JointModelGroup* jmg = state->getJointModelGroup(UR5_GROUP_NAME);
-    kinematics::KinematicsQueryOptions ik_options;
-    ik_options.lock_redundant_joints = false;
-    ik_options.return_approximate_solution = false;
 
     // Linspace
     int n = -1;
@@ -98,36 +134,20 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
                 geo_pose.position.z = grid.zlim_low + k*dk;
                 geo_pose.orientation = grid.orientation;
                 bool ik_success;
-                // Try fixed number of times to find valid, non-colliding solution
-                int tries;
-                for (tries = 0; tries < 3; tries++)
+                // Do IK
+                ik_success = state->setFromIK(_jmg, geo_pose, 10, 0.1, boost::bind(&TrajectoryLibrary::ikValidityCallback, this, _1, _2, _3));
+                if (!ik_success)
                 {
-                    // Do IK
-                    ik_success = state->setFromIK(_jmg, geo_pose, 5, 0.1);
-                    if (!ik_success)
-                    {
-                        ROS_WARN("Could not solve IK for pose %d: Skipping.", n);
-                        printPose(geo_pose);
-                        break;
-                    }
-                    // If IK succeeded
-                    joint_values_t j;
-                    state->copyJointGroupPositions(UR5_GROUP_NAME, j);
-                    // Now check for self-collisions
-                    if (!_plan_scene->isStateColliding(*state, UR5_GROUP_NAME))
-                    {
-                        // Add to vector
-                        ROS_INFO("Successfully generated joint values for pose %d.", n);
-                        jvals.push_back(j);
-                        break;
-                    }
-                    ROS_INFO("State self-collision. Retrying.");
-                }
-                if (tries == 3)
-                {
-                    ROS_ERROR("Could not find non-collision joint state for pose %d: Skipping.", n);
+                    ROS_WARN("Could not solve IK for pose %d: Skipping.", n);
                     printPose(geo_pose);
+                    continue;
                 }
+                // If IK succeeded
+                joint_values_t j;
+                state->copyJointGroupPositions(_jmg, j);
+                // Add to vector
+                ROS_INFO("Successfully generated joint values for pose %d.", n);
+                jvals.push_back(j);
             }
         }
     }
@@ -136,10 +156,10 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
 
 bool TrajectoryLibrary::ikValidityCallback(robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals)
 {
-    STUB;
     // Check for self-collisions
     p_state->setJointGroupPositions(p_jmg, jvals);
-    return !(_plan_scene->isStateValid(*p_state, p_jmg->getName()));
+    p_state->update(true);
+    return _plan_scene->isStateValid(*p_state, p_jmg->getName());
 }
 
 void TrajectoryLibrary::generateJvals(rect_grid& pick_grid, rect_grid& place_grid)
@@ -152,6 +172,8 @@ void TrajectoryLibrary::generateJvals(rect_grid& pick_grid, rect_grid& place_gri
     ROS_INFO("Generating place joint values.");
     _num_place_targets = gridLinspace(_place_jvals, _place_grid);
 
+    ROS_INFO("Generated %d of %d possible pick targets.", (int) _num_pick_targets, pick_grid.xres * pick_grid.yres * pick_grid.zres);
+    ROS_INFO("Genereted %d of %d possible place targets.", (int) _num_place_targets, place_grid.xres * place_grid.yres * place_grid.zres);
     return;
 }
 
@@ -182,6 +204,7 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
     // Add constraints
     req.goal_constraints = constraints;
     req.planner_id = "manipulator[RRTConnectkConfigDefault]";
+    //req.planner_id = "manipulator[RRTstarkConfigDefault]";
     req.allowed_planning_time = 5.0;
 
     // Define workspace
@@ -190,7 +213,7 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
     req.workspace_parameters.max_corner.z = 0.7;
     req.workspace_parameters.min_corner.x = -1.0;
     req.workspace_parameters.min_corner.y = -1.0;
-    req.workspace_parameters.min_corner.z = 0.05;
+    req.workspace_parameters.min_corner.z = 0.25;
 
     // Now prepare the planning context
     int tries = 0;
@@ -208,6 +231,8 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
 
             // Do time parameterization again
             _time_parametizer->computeTimeStamps(*traj_opt);
+            // Now slow it down for safety
+            timeWarpTrajectory(traj_opt, 3);
 
             // Pack motion plan struct
             moveit::core::robotStateToRobotStateMsg(_plan_scene->getCurrentState(), plan.start_state);
@@ -216,6 +241,13 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
             plan.duration = traj_opt->getWaypointDurationFromStart(plan.num_wpts-1);
             traj_opt->getRobotTrajectoryMsg(plan.trajectory);
 
+            if (!_plan_scene->isPathValid(plan.start_state, plan.trajectory, UR5_GROUP_NAME, false))
+            {
+                ROS_ERROR("Path invalid.");
+                tries++;
+                continue;
+            }
+
             ROS_INFO("Duration = %f.", plan.duration);
             return true;
         }
@@ -223,6 +255,18 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
         tries++;
     }
     return false;
+}
+
+void TrajectoryLibrary::timeWarpTrajectory(robot_trajectory::RobotTrajectoryPtr traj, double slow_factor)
+{
+    std::size_t wpt_count = traj->getWayPointCount();
+    for (std::size_t i = 1; i < wpt_count; i++)
+    {
+        double t = traj->getWayPointDurationFromPrevious(i);
+        t = slow_factor*t;
+        traj->setWayPointDurationFromPrevious(i, t);
+    }
+    return;
 }
 
 void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr traj_opt, const robot_trajectory::RobotTrajectoryPtr traj)
@@ -259,9 +303,11 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
                 step_scaled = s / ((float) step_count);
                 // Calculate intermediate state at step s
                 wpt_i.interpolate(wpt_j, step_scaled, step_state);
+                step_state.update(true);
                 // Check state for collision
-                if ( _plan_scene->isStateColliding(step_state) )
+                if (!_plan_scene->isStateValid(step_state, UR5_GROUP_NAME, true) )
                 {
+                    // ROS_INFO("Collision found at %f of the way between waypoints %d and %d.", step_scaled, (int) i, (int) j);
                     shortcut_invalid = true;
                     break;
                 }
@@ -283,7 +329,7 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
                 for (std::size_t n=j; n < wpt_count; n++)
                 {
                     robot_state::RobotStatePtr state = traj_opt->getWayPointPtr(n);
-                    temp_traj.insertWayPoint(n - (j-i), state, 0.0);
+                    temp_traj.insertWayPoint(n - (j-i-1), state, 0.0);
                 }
                 ROS_ASSERT(temp_traj.getWayPointCount() == (wpt_count - (j-i-1)));
 
@@ -349,6 +395,10 @@ int TrajectoryLibrary::build()
         place_state.setJointGroupPositions(UR5_GROUP_NAME, _place_jvals[n]);
         // Jump current state to place pose
         _plan_scene->setCurrentState(place_state);
+        // Publish planning scene
+        moveit_msgs::PlanningScene scene_msg;
+        _plan_scene->getPlanningSceneDiffMsg(scene_msg);
+        _plan_scene_publisher.publish(scene_msg);
 
         /* Iterate through pick targets */
         for (int m = 0; m < _num_pick_targets; m++) {
@@ -370,6 +420,8 @@ int TrajectoryLibrary::build()
 
             // Now change state to our pick target pose
             _plan_scene->setCurrentState(pick_traj.end_state);
+            _plan_scene->getPlanningSceneDiffMsg(scene_msg);
+            _plan_scene_publisher.publish(scene_msg);
             ROS_INFO("Successfully planned pick trajectory.");
 
             // TODO: Attach object (ie apple) for return trajectory
@@ -409,6 +461,8 @@ int TrajectoryLibrary::build()
 
             // Now change state back to our place target pose
             _plan_scene->setCurrentState(place_state);
+            _plan_scene->getPlanningSceneDiffMsg(scene_msg);
+            _plan_scene_publisher.publish(scene_msg);
 
             // TODO: Detach object (apple) for next pick trajectory
 
@@ -444,6 +498,7 @@ void TrajectoryLibrary::demo()
     robot_trajectory::RobotTrajectory traj(_rmodel, UR5_GROUP_NAME);
     robot_state::RobotState end_state(_rmodel);
     robot_state::RobotState start_state(_rmodel);
+    moveit_msgs::PlanningScene scene_msg;
     std::size_t num_wpts;
     double duration;
     double j_dist;
@@ -460,6 +515,10 @@ void TrajectoryLibrary::demo()
     while (1)
     {
         // Pick path
+        // Set current start state
+        _plan_scene->setCurrentState(end_state);
+        _plan_scene->getPlanningSceneDiffMsg(scene_msg);
+        _plan_scene_publisher.publish(scene_msg);
 
         int tries = 0;
         do {
@@ -475,6 +534,10 @@ void TrajectoryLibrary::demo()
         // Build RobotTrajectory and RobotState objects from message
         robot_state::robotStateMsgToRobotState(plan.start_state, start_state);
         traj.setRobotTrajectoryMsg(start_state, plan.trajectory);
+        // Set current start state
+        _plan_scene->setCurrentState(start_state);
+        _plan_scene->getPlanningSceneDiffMsg(scene_msg);
+        _plan_scene_publisher.publish(scene_msg);
         // Get trajectory data
         num_wpts = traj.getWayPointCount();
         duration = plan.duration;
@@ -516,6 +579,10 @@ void TrajectoryLibrary::demo()
 
         // Update end_state
         robot_state::robotStateMsgToRobotState(plan.end_state, end_state);
+        // Set current start state
+        _plan_scene->setCurrentState(end_state);
+        _plan_scene->getPlanningSceneDiffMsg(scene_msg);
+        _plan_scene_publisher.publish(scene_msg);
 
         _trajectory_publisher.publish(display_trajectory);
 
