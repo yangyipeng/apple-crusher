@@ -4,17 +4,17 @@
 int main(int argc, char** argv)
 {
     ros::init(argc, argv, "TrajectoryLibary");
-    ros::NodeHandle nh("~");
+    ros::NodeHandle nh("nh1");
 
     TrajectoryLibrary tlib(nh);
     tlib.initWorld();
 
-    /* Read stored trajectories from file */
     // TODO: Make sure we can get number of pick and place locations
+    tlib.importFromFile();
 
     ROS_INFO("Hit enter to begin demo.");
-//    std::cin.ignore(100, '\n');
-//    tlib.demo();
+    std::cin.ignore(100, '\n');
+    tlib.demo();
 
     ros::shutdown();
     return 0;

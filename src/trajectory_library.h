@@ -80,6 +80,7 @@ class TrajectoryLibrary
     robot_model_loader::RobotModelLoaderPtr _rmodel_loader;
     robot_model::RobotModelPtr _rmodel;
     const robot_model::JointModelGroup* _jmg;
+    collision_detection::AllowedCollisionMatrix _acm;
     planning_scene::PlanningScenePtr _plan_scene;
     planning_interface::PlannerManagerPtr _planner;
     boost::shared_ptr<trajectory_processing::IterativeParabolicTimeParameterization> _time_parametizer;
@@ -103,13 +104,12 @@ class TrajectoryLibrary
 
     bool ikValidityCallback(robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals);
 
-    //write and read
-
+    // File write and read
     bool filewrite(std::vector<ur5_motion_plan> &Library, const char* filename, bool debug);
     bool fileread(std::vector<ur5_motion_plan> &Library, const char* filename, bool debug);
 
 public:
-    TrajectoryLibrary(ros::NodeHandle nh);
+    TrajectoryLibrary(ros::NodeHandle& nh);
 
     void initWorld();
     void generateJvals(rect_grid& pick_grid, rect_grid& place_grid);
@@ -118,6 +118,9 @@ public:
 
     bool getPickPlan(ur5_motion_plan& plan, int place_start, int pick_end);
     bool getPlacePlan(ur5_motion_plan& plan, int pick_start, int place_end);
+
+    bool exportToFile();
+    bool importFromFile();
 
     inline std::size_t getNumTrajectories() { return _num_trajects; }
 

@@ -50,6 +50,8 @@ int main(int argc, char** argv)
     ROS_INFO("Building trajectory library.");
     tlib.build();
 
+    tlib.exportToFile();
+
     ROS_INFO("Hit enter to begin demo.");
     std::cin.ignore(100, '\n');
     tlib.demo();

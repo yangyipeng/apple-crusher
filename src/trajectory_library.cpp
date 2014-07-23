@@ -2,7 +2,7 @@
 
 #define STUB ROS_INFO("LINE %d", __LINE__)
 
-TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle nh)
+TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle& nh)
 {
     /* Load up robot model */
     ROS_INFO("Loading ur5 robot model.");
@@ -17,6 +17,7 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle nh)
     /* Init planning scene */
     ROS_INFO("Initializing PlanningScene from RobotModel");
     _plan_scene = planning_scene::PlanningScenePtr(new planning_scene::PlanningScene(_rmodel));
+    _acm = _plan_scene->getAllowedCollisionMatrixNonConst();
 
     /* Load the planner */
     ROS_INFO("Loading the planner plugin.");
@@ -64,7 +65,6 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle nh)
 void TrajectoryLibrary::initWorld()
 {
     collision_detection::WorldPtr world = _plan_scene->getWorldNonConst();
-    collision_detection::AllowedCollisionMatrix acm = _plan_scene->getAllowedCollisionMatrixNonConst();
 
     // Define workspace limits with planes
     shapes::ShapeConstPtr ground_plane(new shapes::Plane(0,0,1,0));
@@ -79,25 +79,32 @@ void TrajectoryLibrary::initWorld()
     Eigen::Affine3d eigen_pose;
     tf::poseMsgToEigen(pose, eigen_pose);
     world->addToObject("workspace_bounds", ground_plane, eigen_pose);
-    acm.setEntry("workspace_bounds", "world", true);
-    acm.setEntry("workspace_bounds", "base_link", true);
+    _acm.setEntry("workspace_bounds", "world", true);
+    _acm.setEntry("workspace_bounds", "base_link", true);
 
-//    // Add obstructo-sphere in middle of workspace
-//    shapes::ShapeConstPtr obstructo(new shapes::Sphere(0.2));
-//    pose.position.x = 0;
-//    pose.position.y = 0;
-//    pose.position.z = 0.7;
-//    tf::poseMsgToEigen(pose, eigen_pose);
-//    world->addToObject("obstructo_sphere", obstructo, eigen_pose);
-//    acm.setEntry("obstructo_sphere", "world", true);
-//    acm.setEntry("obstructo_sphere", "base_link", true);
-//    acm.setEntry("obstructo_sphere", "shoulder_link", true);
+    // Add obstructo-sphere in middle of workspace
+    shapes::ShapeConstPtr obstructo(new shapes::Sphere(0.2));
+    pose.position.x = 0;
+    pose.position.y = 0;
+    pose.position.z = 0.7;
+    tf::poseMsgToEigen(pose, eigen_pose);
+    world->addToObject("obstructo_sphere", obstructo, eigen_pose);
+    _acm.setEntry("obstructo_sphere", "world", true);
+    _acm.setEntry("obstructo_sphere", "base_link", true);
+    _acm.setEntry("obstructo_sphere", "shoulder_link", true);
 
     // Publish updated planning scene
-    acm.print(std::cout);
     moveit_msgs::PlanningScene scene_msg;
     _plan_scene->getPlanningSceneMsg(scene_msg);
     _plan_scene_publisher.publish(scene_msg);
+
+    _plan_scene->printKnownObjects(std::cout);
+    std::vector<std::string> collision_detector_names;
+    _plan_scene->getCollisionDetectorNames(collision_detector_names);
+    for (int i=0; i < collision_detector_names.size(); i++)
+    {
+        std::cout << "CD: " << collision_detector_names[i] << std::endl;
+    }
 
     return;
 }
@@ -142,7 +149,7 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
                 geo_pose.orientation = grid.orientation;
                 bool ik_success;
                 // Do IK
-                ik_success = state->setFromIK(_jmg, geo_pose, 10, 0.1, boost::bind(&TrajectoryLibrary::ikValidityCallback, this, _1, _2, _3));
+                ik_success = state->setFromIK(_jmg, geo_pose, 10, 0.2, boost::bind(&TrajectoryLibrary::ikValidityCallback, this, _1, _2, _3));
                 if (!ik_success)
                 {
                     ROS_WARN("Could not solve IK for pose %d: Skipping.", n);
@@ -210,6 +217,7 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
 
     // Add constraints
     req.goal_constraints = constraints;
+    //req.planner_id = "manipulator[LBKPIECEkConfigDefault]";
     req.planner_id = "manipulator[RRTConnectkConfigDefault]";
     //req.planner_id = "manipulator[RRTstarkConfigDefault]";
     req.allowed_planning_time = 5.0;
@@ -232,14 +240,19 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
         {
             robot_trajectory::RobotTrajectoryPtr traj(res.trajectory_);
 
+            if (!_plan_scene->isPathValid(*traj, UR5_GROUP_NAME))
+            {
+                ROS_ERROR("Path invalid.");
+                tries++;
+                continue;
+            }
+
             // Do optimization
             robot_trajectory::RobotTrajectoryPtr traj_opt(new robot_trajectory::RobotTrajectory(_rmodel, UR5_GROUP_NAME));
             optimizeTrajectory(traj_opt, traj);
 
-            // Do time parameterization again
-            _time_parametizer->computeTimeStamps(*traj_opt);
             // Now slow it down for safety
-            timeWarpTrajectory(traj_opt, 3);
+            // timeWarpTrajectory(traj_opt, 3);
 
             // Pack motion plan struct
             moveit::core::robotStateToRobotStateMsg(_plan_scene->getCurrentState(), plan.start_state);
@@ -247,13 +260,6 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
             plan.num_wpts = traj_opt->getWayPointCount();
             plan.duration = traj_opt->getWaypointDurationFromStart(plan.num_wpts-1);
             traj_opt->getRobotTrajectoryMsg(plan.trajectory);
-
-            if (!_plan_scene->isPathValid(plan.start_state, plan.trajectory, UR5_GROUP_NAME, false))
-            {
-                ROS_ERROR("Path invalid.");
-                tries++;
-                continue;
-            }
 
             ROS_INFO("Duration = %f.", plan.duration);
             return true;
@@ -280,7 +286,7 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
 {
     // Make a copy
     *traj_opt = *traj;
-    return;
+
     std::size_t wpt_count = traj->getWayPointCount();
     ROS_INFO("Optimize starts with %d waypoints.", (int) wpt_count);
 
@@ -312,7 +318,7 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
                 wpt_i.interpolate(wpt_j, step_scaled, step_state);
                 step_state.update(true);
                 // Check state for collision
-                if (!_plan_scene->isStateValid(step_state, UR5_GROUP_NAME, true) )
+                if (!_plan_scene->isStateValid(step_state, UR5_GROUP_NAME) )
                 {
                     // ROS_INFO("Collision found at %f of the way between waypoints %d and %d.", step_scaled, (int) i, (int) j);
                     shortcut_invalid = true;
@@ -349,6 +355,9 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
             // Otherwise shortcut is invalid, so move on
         }
     }
+
+    // Do time parameterization again
+    _time_parametizer->computeTimeStamps(*traj_opt);
 
     ROS_INFO("Successfully trimmed %d nodes.", (int) (traj->getWayPointCount() - traj_opt->getWayPointCount()) );
     return;
@@ -484,12 +493,6 @@ int TrajectoryLibrary::build()
 
     ROS_INFO("Generated %d trajectories out of a theoretical %d.", (int) _num_trajects, (int) (_num_pick_targets*_num_place_targets) );
 
-    //SAVE DATA TO .bin FILE
-    ROS_INFO("--------------SAVING!!!!-------------------");
-    bool pickcheck = filewrite(_pick_trajects, "pickplan.bin",0);
-    bool placecheck = filewrite(_place_trajects, "placeplan.bin",0);
-    ROS_INFO("%d-----------DONE!!!!!!-----------------%d",pickcheck,placecheck);
-
     return _num_trajects;
 }
 
@@ -509,12 +512,6 @@ void TrajectoryLibrary::demo()
     std::size_t num_wpts;
     double duration;
     double j_dist;
-
-    //LOAD DATA FROM .bin FILE
-    ROS_INFO("--------------LOADING!!!!-------------------");
-    bool pickcheck = fileread(_pick_trajects, "pickplan.bin",0);
-    bool placecheck = fileread(_place_trajects, "placeplan.bin",0);
-    ROS_INFO("%d-----------DONE!!!!!!-----------------%d",pickcheck,placecheck);
 
     n = rand() % _num_place_targets; // Pick random place target
     end_state.setJointGroupPositions(_jmg, _place_jvals[n]);
@@ -874,6 +871,29 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const ch
 
     return check;
 
+}
+
+bool TrajectoryLibrary::exportToFile()
+{
+    //SAVE DATA TO .bin FILE
+    ROS_INFO("--------------SAVING!!!!-------------------");
+    bool pickcheck = filewrite(_pick_trajects, "pickplan.bin",0);
+    bool placecheck = filewrite(_place_trajects, "placeplan.bin",0);
+    ROS_INFO("%d-----------DONE!!!!!!-----------------%d",pickcheck,placecheck);
+
+    return (pickcheck * placecheck);
+}
+
+bool TrajectoryLibrary::importFromFile()
+{
+    /* Read stored trajectories from file */
+    //LOAD DATA FROM .bin FILE
+    ROS_INFO("--------------LOADING!!!!-------------------");
+    bool pickcheck = fileread(_pick_trajects, "pickplan.bin",0);
+    bool placecheck = fileread(_place_trajects, "placeplan.bin",0);
+    ROS_INFO("%d-----------DONE!!!!!!-----------------%d",pickcheck,placecheck);
+
+    return (pickcheck * placecheck);
 }
 
 //void TrajectoryLibrary::appleAttach()

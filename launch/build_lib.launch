@@ -10,6 +10,8 @@
     <arg name="limited" value="$(arg limited)"/>
   </include>
   
+  <include file="$(find ur5_moveit_config)/launch/trajectory_execution.launch.xml"/>
+
   <node name="build_lib" pkg="apple_crusher" type="build_lib" respawn="false" launch-prefix="$(arg launch_prefix)" output="screen">
     <rosparam command="load" file="$(find ur5_moveit_config)/config/kinematics.yaml"/>
     <param name="/planning_plugin" value="ompl_interface/OMPLPlanner"/>

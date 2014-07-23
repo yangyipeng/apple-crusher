@@ -9,6 +9,8 @@
     <arg name="load_robot_description" value="true"/>
     <arg name="limited" value="$(arg limited)"/>
   </include>
+
+  <include file="$(find ur5_moveit_config)/launch/trajectory_execution.launch.xml"/>
   
   <node name="demo_lib" pkg="apple_crusher" type="demo" respawn="false" launch-prefix="$(arg launch_prefix)" output="screen">
     <rosparam command="load" file="$(find ur5_moveit_config)/config/kinematics.yaml"/>
