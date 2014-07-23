@@ -32,19 +32,6 @@
 #define DT_LOCAL_COLLISION_CHECK 0.05
 
 typedef struct {
-    // We need both a moveit_msgs::RobotTrajectory and a valid RobotState
-    moveit_msgs::RobotTrajectory trajectory;
-    moveit_msgs::RobotState start_state;
-    moveit_msgs::RobotState end_state;
-    int start_target_index;
-    int end_target_index;
-    double duration; // seconds
-    int num_wpts;
-} ur5_motion_plan;
-
-typedef std::vector<double> joint_values_t;
-
-typedef struct {
     double xlim_low;
     double xlim_high;
     int xres;
@@ -59,22 +46,47 @@ typedef struct {
     geometry_msgs::Quaternion orientation;
 } rect_grid;
 
+typedef std::vector<double> joint_values_t;
+
+typedef struct {
+    rect_grid grid;
+    std::vector<joint_values_t> jvals;
+    int target_count;
+} target_volume;
+
+
+typedef struct {
+    // We need both a moveit_msgs::RobotTrajectory and a valid RobotState
+    moveit_msgs::RobotTrajectory trajectory;
+    moveit_msgs::RobotState start_state;
+    moveit_msgs::RobotState end_state;
+    int start_target_index;
+    int end_target_index;
+    double duration; // seconds
+    int num_wpts;
+} ur5_motion_plan;
+
+typedef struct {
+    std::vector<ur5_motion_plan> plans;
+    int plan_count;
+    int start_group;
+    int end_group;
+} plan_group;
+
+enum target_groups {
+    PICK_TARGET,
+    PLACE_TARGET
+};
+
 class TrajectoryLibrary
 {
-    // Trajectories
-    std::vector<ur5_motion_plan> _pick_trajects;
-    std::vector<ur5_motion_plan> _place_trajects;
-    std::size_t _num_trajects;
+    // Target positions
+    int _num_target_groups;
+    std::vector<target_volume> _target_groups;
 
-    // Pick and place target volumes
-    rect_grid _pick_grid;
-    rect_grid _place_grid;
-
-    // Pick and place target joint values (from IK)
-    std::vector<joint_values_t> _pick_jvals;
-    std::vector<joint_values_t> _place_jvals;
-    std::size_t _num_pick_targets;
-    std::size_t _num_place_targets;
+    // Plans
+    int _num_plan_groups;
+    std::vector<plan_group> _plan_groups;
 
     // MoveIt variables
     robot_model_loader::RobotModelLoaderPtr _rmodel_loader;
