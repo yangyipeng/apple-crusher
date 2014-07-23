@@ -280,7 +280,7 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
 {
     // Make a copy
     *traj_opt = *traj;
-
+    return;
     std::size_t wpt_count = traj->getWayPointCount();
     ROS_INFO("Optimize starts with %d waypoints.", (int) wpt_count);
 
@@ -484,11 +484,11 @@ int TrajectoryLibrary::build()
 
     ROS_INFO("Generated %d trajectories out of a theoretical %d.", (int) _num_trajects, (int) (_num_pick_targets*_num_place_targets) );
 
-//    //SAVE DATA TO .bin FILE
-//    ROS_INFO("--------------SAVING!!!!-------------------");
-//    bool pickcheck = filewrite(_pick_trajects, "pickplan.bin",0);
-//    bool placecheck = filewrite(_place_trajects, "placeplan.bin",0);
-//    ROS_INFO("%d-----------DONE!!!!!!-----------------%d",pickcheck,placecheck);
+    //SAVE DATA TO .bin FILE
+    ROS_INFO("--------------SAVING!!!!-------------------");
+    bool pickcheck = filewrite(_pick_trajects, "pickplan.bin",0);
+    bool placecheck = filewrite(_place_trajects, "placeplan.bin",0);
+    ROS_INFO("%d-----------DONE!!!!!!-----------------%d",pickcheck,placecheck);
 
     return _num_trajects;
 }
@@ -651,6 +651,8 @@ bool TrajectoryLibrary::filewrite(std::vector<ur5_motion_plan> &Library, const c
     bool check;
     int itersize = Library.size();
     int nodesize = 0;
+    double radius = 0.05;
+    int8_t ADD = 0;
 
     std::ofstream file;
     file.open (filename, std::ofstream::out | std::ofstream::binary);
@@ -706,6 +708,10 @@ bool TrajectoryLibrary::filewrite(std::vector<ur5_motion_plan> &Library, const c
             //index
             file.write((char *)(&Library[n].pick_loc_index),sizeof(unsigned int));
             file.write((char *)(&Library[n].place_loc_index),sizeof(unsigned int));
+
+            //write an apple
+            file << "ee_link"  << '\n' << "apple" << '\n';
+            file.write((char *)(&radius),sizeof(double));
 
 
         }
@@ -823,6 +829,35 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const ch
             info.read((char *)(&ur5.pick_loc_index),sizeof(unsigned int));
             info.read((char *)(&ur5.place_loc_index),sizeof(unsigned int));
 
+            //read an apple
+            /* Define the attached object message*/
+            getline(info,temp_string);
+            std::cout << temp_string << '\n';
+            ur5.end_state.attached_collision_objects.resize(1);
+            ur5.end_state.attached_collision_objects[0].link_name = temp_string;
+            ur5.end_state.attached_collision_objects[0].object.header.frame_id = temp_string;
+            temp_string = blank_string;
+            getline(info,temp_string);
+            ur5.end_state.attached_collision_objects[0].object.id = temp_string;
+            temp_string = blank_string;
+
+            /* Define a box to be attached */
+            geometry_msgs::Pose pose;
+            shape_msgs::SolidPrimitive primitive;
+            ROS_INFO("TESTING");
+            info.read((char *)(&temp_double),sizeof(double));
+            pose.position.x = temp_double;
+            primitive.type = primitive.SPHERE;
+            primitive.dimensions.resize(1);
+            primitive.dimensions[0] = temp_double;
+
+            ur5.end_state.attached_collision_objects[0].object.primitives.push_back(primitive);
+            ur5.end_state.attached_collision_objects[0].object.primitive_poses.push_back(pose);
+
+            /* An attach operation requires an ADD */
+            ur5.end_state.attached_collision_objects[0].object.operation = ur5.end_state.attached_collision_objects[0].object.ADD;
+
+
             Library.push_back(ur5);
             ur5 = empty;
         }
@@ -840,3 +875,32 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const ch
     return check;
 
 }
+
+//void TrajectoryLibrary::appleAttach()
+//{
+//    ros::NodeHandle node_handle;
+//    STUB;
+//    /* ATTACH AN OBJECT*/
+//    /* First advertise and wait for a connection*/
+//    ros::Publisher attached_object_publisher = node_handle.advertise<moveit_msgs::AttachedCollisionObject>("attached_collision_object", 1);
+//    while(attached_object_publisher.getNumSubscribers() < 1)
+//    {
+//      ros::WallDuration sleep_t(0.5);
+//      sleep_t.sleep();
+//    }
+//    STUB;
+//    moveit_msgs::AttachedCollisionObject apple;
+//    apple.link_name = "ee_link";
+//    apple.object.header.frame_id = "ee_link";
+//    apple.object.id = "apple";
+//    geometry_msgs::Pose pose;
+//    pose.position.x = 0.05;
+//    shape_msgs::SolidPrimitive primitive;
+//    primitive.type = primitive.SPHERE;
+//    primitive.dimensions.resize(1);
+//    primitive.dimensions[0] = 0.05;
+//    apple.object.primitives.push_back(primitive);
+//    apple.object.primitive_poses.push_back(pose);
+//    apple.object.operation = apple.object.ADD;
+//    attached_object_publisher.publish(apple);
+//}
