@@ -466,10 +466,10 @@ int TrajectoryLibrary::build()
             _trajectory_publisher.publish(display_trajectory);
 
             // Now record indices of pick and place locations
-            pick_traj.pick_loc_index = m;
-            pick_traj.place_loc_index = n;
-            place_traj.pick_loc_index = m;
-            place_traj.place_loc_index = n;
+            pick_traj.start_target_index = n;
+            pick_traj.end_target_index = m;
+            place_traj.start_target_index = m;
+            place_traj.end_target_index = n;
 
             // Store trajectories in library
             _pick_trajects.push_back(pick_traj);
@@ -601,14 +601,14 @@ void TrajectoryLibrary::demo()
     return;
 }
 
-bool TrajectoryLibrary::getPickPlan(ur5_motion_plan &plan, int place_start, int pick_end)
+bool TrajectoryLibrary::getPickPlan(ur5_motion_plan &plan, int start_index, int end_index)
 {
     // For now just do linear search
     for (int i=0; i < _num_trajects; i++)
     {
-        if (_pick_trajects[i].place_loc_index == place_start)
+        if (_pick_trajects[i].start_target_index == start_index)
         {
-            if (_pick_trajects[i].pick_loc_index == pick_end)
+            if (_pick_trajects[i].end_target_index == end_index)
             {
                 plan = _pick_trajects[i];
                 return true;
@@ -622,14 +622,14 @@ bool TrajectoryLibrary::getPickPlan(ur5_motion_plan &plan, int place_start, int 
     return false;
 }
 
-bool TrajectoryLibrary::getPlacePlan(ur5_motion_plan &plan, int pick_start, int place_end)
+bool TrajectoryLibrary::getPlacePlan(ur5_motion_plan &plan, int start_index, int end_index)
 {
     // For now just do linear search
     for (int i=0; i < _num_trajects; i++)
     {
-        if (_place_trajects[i].place_loc_index == place_end)
+        if (_place_trajects[i].start_target_index == start_index)
         {
-            if (_place_trajects[i].pick_loc_index == pick_start)
+            if (_place_trajects[i].start_target_index == end_index)
             {
                 plan = _place_trajects[i];
                 return true;
@@ -703,8 +703,8 @@ bool TrajectoryLibrary::filewrite(std::vector<ur5_motion_plan> &Library, const c
             }
 
             //index
-            file.write((char *)(&Library[n].pick_loc_index),sizeof(unsigned int));
-            file.write((char *)(&Library[n].place_loc_index),sizeof(unsigned int));
+            file.write((char *)(&Library[n].start_target_index),sizeof(unsigned int));
+            file.write((char *)(&Library[n].end_target_index),sizeof(unsigned int));
 
             //write an apple
             file << "ee_link"  << '\n' << "apple" << '\n';
@@ -729,8 +729,8 @@ bool TrajectoryLibrary::filewrite(std::vector<ur5_motion_plan> &Library, const c
 bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const char* filename, bool debug)
 {
     bool check;
-    int nodesize;
-    int itersize;
+    int wpt_count;
+    int plan_count;
 
     //int nodeset = 10;
     double temp_double;
@@ -751,15 +751,17 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const ch
 
     if(info.is_open())
     {
-        //Trajectory
-        info.read((char*)(&itersize),sizeof(itersize));
-        if (debug == 1) ROS_INFO("%d",itersize);
-        for (size_t n = 0; n < itersize; n++)
+        // Iterate through trajectories
+        info.read((char*)(&plan_count),sizeof(plan_count));
+
+        if (debug == 1) ROS_INFO("%d",plan_count);
+        for (size_t n = 0; n < plan_count; n++)
         {
-            info.read((char*)(&nodesize),sizeof(nodesize));
-            temp.push_back(nodesize);
-            if (debug == 1) ROS_INFO("%d",nodesize);
-            for (size_t idx = 0; idx < nodesize; idx++)
+            // Iterate through waypoints
+            info.read((char*)(&wpt_count),sizeof(wpt_count));
+            temp.push_back(wpt_count);
+            if (debug == 1) ROS_INFO("%d",wpt_count);
+            for (size_t idx = 0; idx < wpt_count; idx++)
             {
                 for (size_t i=0; i<6; i++)
                 {
@@ -823,8 +825,8 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const ch
             }
 
             //Index
-            info.read((char *)(&ur5.pick_loc_index),sizeof(unsigned int));
-            info.read((char *)(&ur5.place_loc_index),sizeof(unsigned int));
+            info.read((char *)(&ur5.start_target_index),sizeof(unsigned int));
+            info.read((char *)(&ur5.end_target_index),sizeof(unsigned int));
 
             //read an apple
             /* Define the attached object message*/
@@ -854,6 +856,9 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const ch
             /* An attach operation requires an ADD */
             ur5.end_state.attached_collision_objects[0].object.operation = ur5.end_state.attached_collision_objects[0].object.ADD;
 
+            // Other parameters
+            ur5.num_wpts = wpt_count;
+
 
             Library.push_back(ur5);
             ur5 = empty;
@@ -868,6 +873,8 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const ch
         info.close();
     }
     else check = 0;
+
+    _num_trajects = plan_count;
 
     return check;
 

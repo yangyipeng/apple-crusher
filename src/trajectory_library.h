@@ -36,8 +36,8 @@ typedef struct {
     moveit_msgs::RobotTrajectory trajectory;
     moveit_msgs::RobotState start_state;
     moveit_msgs::RobotState end_state;
-    int pick_loc_index;
-    int place_loc_index;
+    int start_target_index;
+    int end_target_index;
     double duration; // seconds
     int num_wpts;
 } ur5_motion_plan;
@@ -116,7 +116,7 @@ public:
     int build();
     void demo();
 
-    bool getPickPlan(ur5_motion_plan& plan, int place_start, int pick_end);
+    bool getPickPlan(ur5_motion_plan& plan, int start_index, int end_index);
     bool getPlacePlan(ur5_motion_plan& plan, int pick_start, int place_end);
 
     bool exportToFile();
