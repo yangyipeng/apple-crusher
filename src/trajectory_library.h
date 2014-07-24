@@ -9,6 +9,8 @@
 #include <string.h>
 
 #include <eigen_conversions/eigen_msg.h>
+#include <geometric_shapes/shapes.h>
+#include <geometric_shapes/shape_messages.h>
 // MoveIt!
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
@@ -102,6 +104,7 @@ class TrajectoryLibrary
     ros::Publisher _trajectory_publisher;
     ros::Publisher _plan_scene_publisher;
     ros::Publisher _robot_state_publisher;
+    ros::Publisher _collision_object_publisher;
 
     // Private methods
     std::size_t gridLinspace(std::vector<joint_values_t>& jvals, rect_grid& grid);

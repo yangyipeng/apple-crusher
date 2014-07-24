@@ -58,7 +58,8 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle& nh)
     // Create publisher for rviz
     _trajectory_publisher = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, true);
     _plan_scene_publisher = nh.advertise<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", 1, true);
-    _robot_state_publisher = nh.advertise<moveit_msgs::DisplayRobotState>("/display_robot_state", 1, true);
+    _robot_state_publisher = nh.advertise<moveit_msgs::DisplayRobotState>("display_robot_state", 1, true);
+    _collision_object_publisher = nh.advertise<moveit_msgs::CollisionObject>("collision_object", 1);
 
     _num_plan_groups = 0;
     _num_target_groups = 0;
@@ -69,6 +70,8 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle& nh)
 void TrajectoryLibrary::initWorld()
 {
     collision_detection::WorldPtr world = _plan_scene->getWorldNonConst();
+
+    moveit_msgs::CollisionObject object_msg;
 
     // Define workspace limits with planes
     shapes::ShapeConstPtr ground_plane(new shapes::Plane(0,0,1,0));
@@ -86,16 +89,41 @@ void TrajectoryLibrary::initWorld()
     _acm.setEntry("workspace_bounds", "world", true);
     _acm.setEntry("workspace_bounds", "base_link", true);
 
+    // Publish object
+    shape_msgs::Plane plane;
+    plane.coef[0] = 0;
+    plane.coef[1] = 0;
+    plane.coef[2] = 1;
+    plane.coef[3] = 0;
+    object_msg.id = "workspace_bounds";
+    object_msg.header.frame_id = "world";
+    object_msg.planes.push_back(plane);
+    object_msg.primitive_poses.push_back(pose);
+    object_msg.operation = object_msg.ADD;
+    _collision_object_publisher.publish(object_msg);
+
     // Add obstructo-sphere in middle of workspace
-    shapes::ShapeConstPtr obstructo(new shapes::Sphere(0.2));
-    pose.position.x = 0;
-    pose.position.y = 0;
-    pose.position.z = 0.7;
-    tf::poseMsgToEigen(pose, eigen_pose);
-    //world->addToObject("obstructo_sphere", obstructo, eigen_pose);
-    _acm.setEntry("obstructo_sphere", "world", true);
-    _acm.setEntry("obstructo_sphere", "base_link", true);
-    _acm.setEntry("obstructo_sphere", "shoulder_link", true);
+//    shapes::ShapeConstPtr obstructo(new shapes::Sphere(0.2));
+//    pose.position.x = 0;
+//    pose.position.y = 0;
+//    pose.position.z = 0.7;
+//    tf::poseMsgToEigen(pose, eigen_pose);
+//    world->addToObject("obstructo_sphere", obstructo, eigen_pose);
+//    _acm.setEntry("obstructo_sphere", "world", true);
+//    _acm.setEntry("obstructo_sphere", "base_link", true);
+//    _acm.setEntry("obstructo_sphere", "shoulder_link", true);
+
+//    // Publish object
+//    shape_msgs::SolidPrimitive primitive;
+//    primitive.type = primitive.SPHERE;
+//    primitive.dimensions.resize(1);
+//    primitive.dimensions[0] = 0.2;
+//    object_msg.id = "obstructo_sphere";
+//    object_msg.header.frame_id = "world";
+//    object_msg.primitives.push_back(primitive);
+//    object_msg.primitive_poses.push_back(pose);
+//    object_msg.operation = object_msg.ADD;
+//    _collision_object_publisher.publish(object_msg);
 
     // Publish updated planning scene
     moveit_msgs::PlanningScene scene_msg;
@@ -291,8 +319,6 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
 {
     // Make a copy
     *traj_opt = *traj;
-    _time_parametizer->computeTimeStamps(*traj_opt);
-    return;
 
     std::size_t wpt_count = traj->getWayPointCount();
     ROS_INFO("Optimize starts with %d waypoints.", (int) wpt_count);
@@ -603,11 +629,12 @@ void TrajectoryLibrary::demo()
         _trajectory_publisher.publish(display_trajectory);
 
         // Execute trajectory
-        // _execution_manager->pushAndExecute(plan.trajectory);
+        _execution_manager->pushAndExecute(plan->trajectory);
 
         // Now delay for duration of trajectory
-        ros::WallDuration sleep_time(duration);
-        sleep_time.sleep();
+//        ros::WallDuration sleep_time(duration);
+//        sleep_time.sleep();
+        _execution_manager->waitForExecution();
     }
 
     return;
@@ -915,32 +942,3 @@ void TrajectoryLibrary::importFromFile(int num_plan_groups)
     }
     return;
 }
-
-//void TrajectoryLibrary::appleAttach()
-//{
-//    ros::NodeHandle node_handle;
-//    STUB;
-//    /* ATTACH AN OBJECT*/
-//    /* First advertise and wait for a connection*/
-//    ros::Publisher attached_object_publisher = node_handle.advertise<moveit_msgs::AttachedCollisionObject>("attached_collision_object", 1);
-//    while(attached_object_publisher.getNumSubscribers() < 1)
-//    {
-//      ros::WallDuration sleep_t(0.5);
-//      sleep_t.sleep();
-//    }
-//    STUB;
-//    moveit_msgs::AttachedCollisionObject apple;
-//    apple.link_name = "ee_link";
-//    apple.object.header.frame_id = "ee_link";
-//    apple.object.id = "apple";
-//    geometry_msgs::Pose pose;
-//    pose.position.x = 0.05;
-//    shape_msgs::SolidPrimitive primitive;
-//    primitive.type = primitive.SPHERE;
-//    primitive.dimensions.resize(1);
-//    primitive.dimensions[0] = 0.05;
-//    apple.object.primitives.push_back(primitive);
-//    apple.object.primitive_poses.push_back(pose);
-//    apple.object.operation = apple.object.ADD;
-//    attached_object_publisher.publish(apple);
-//}

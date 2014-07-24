@@ -3,7 +3,7 @@
 
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "TrajectoryLibary");
+    ros::init(argc, argv, "Build Lib");
     ros::NodeHandle nh("~");
 
     TrajectoryLibrary tlib(nh);
@@ -32,10 +32,10 @@ int main(int argc, char** argv)
     placeVol.orientation.z = 0;
     placeVol.xlim_low = -0.3;
     placeVol.xlim_high = -0.25;
-    placeVol.xres = 1;
-    placeVol.ylim_low = 0.7;
+    placeVol.xres = 2;
+    placeVol.ylim_low = 0.5;
     placeVol.ylim_high = 0.7;
-    placeVol.yres = 1;
+    placeVol.yres = 3;
     placeVol.zlim_low = 0.35;
     placeVol.zlim_high = 0.50;
     placeVol.zres = 1;

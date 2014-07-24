@@ -9,10 +9,13 @@
     <arg name="load_robot_description" value="true"/>
     <arg name="limited" value="$(arg limited)"/>
   </include>
-  
-<!--
-  <include file="$(find ur5_moveit_config)/launch/trajectory_execution.launch.xml"/>
--->
+
+  <!-- Remap follow_joint_trajectory -->
+  <remap if="$(arg sim)" from="/follow_joint_trajectory" to="/arm_controller/follow_joint_trajectory"/>
+
+  <group ns="build_lib">  
+  	<include file="$(find ur5_moveit_config)/launch/trajectory_execution.launch.xml"/>
+  </group>
 
   <node name="build_lib" pkg="apple_crusher" type="build_lib" respawn="false" launch-prefix="$(arg launch_prefix)" output="screen">
     <rosparam command="load" file="$(find ur5_moveit_config)/config/kinematics.yaml"/>
