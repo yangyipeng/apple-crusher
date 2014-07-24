@@ -40,9 +40,13 @@ int main(int argc, char** argv)
     placeVol.zlim_high = 0.50;
     placeVol.zres = 1;
 
+    std::vector<rect_grid> grids;
+    grids.push_back(pickVol);
+    grids.push_back(placeVol);
+
     /* Generate target joint values */
     ROS_INFO("Calculating target joint values.");
-    tlib.generateJvals(pickVol, placeVol);
+    tlib.generateTargets(grids);
     ROS_INFO("Hit enter to begin building library.");
     std::cin.ignore(100, '\n');
 

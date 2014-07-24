@@ -58,6 +58,10 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle& nh)
     // Create publisher for rviz
     _trajectory_publisher = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, true);
     _plan_scene_publisher = nh.advertise<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", 1, true);
+    _robot_state_publisher = nh.advertise<moveit_msgs::DisplayRobotState>("/display_robot_state", 1, true);
+
+    _num_plan_groups = 0;
+    _num_target_groups = 0;
 
     return;
 }
@@ -88,7 +92,7 @@ void TrajectoryLibrary::initWorld()
     pose.position.y = 0;
     pose.position.z = 0.7;
     tf::poseMsgToEigen(pose, eigen_pose);
-    world->addToObject("obstructo_sphere", obstructo, eigen_pose);
+    //world->addToObject("obstructo_sphere", obstructo, eigen_pose);
     _acm.setEntry("obstructo_sphere", "world", true);
     _acm.setEntry("obstructo_sphere", "base_link", true);
     _acm.setEntry("obstructo_sphere", "shoulder_link", true);
@@ -114,6 +118,7 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
     double di, dj, dk;
     di = dj = dk = 0.0;
     int num_poses;
+    jvals.clear();
 
     // Calculate grid spacings if xres != 1
     if (grid.xres != 1) {
@@ -129,7 +134,6 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
     // Reserve ahead of time the number of poses for speed
     num_poses = grid.xres * grid.yres * grid.zres;
     jvals.reserve(num_poses);
-    ROS_INFO("Attempting to generate %d targets.", num_poses);
 
     geometry_msgs::Pose geo_pose;
     robot_state::RobotStatePtr state(new robot_state::RobotState(_rmodel));
@@ -176,18 +180,19 @@ bool TrajectoryLibrary::ikValidityCallback(robot_state::RobotState* p_state, con
     return _plan_scene->isStateValid(*p_state, p_jmg->getName());
 }
 
-void TrajectoryLibrary::generateJvals(rect_grid& pick_grid, rect_grid& place_grid)
+void TrajectoryLibrary::generateTargets(const std::vector<rect_grid> grids)
 {
-    _pick_grid = pick_grid;
-    ROS_INFO("Generating pick joint values.");
-    _num_pick_targets = gridLinspace(_pick_jvals, _pick_grid);
+    target_volume vol;
+    for (int i = 0; i < grids.size(); i++)
+    {
+        ROS_INFO("Generating joint value targets for group %d.", i);
+        vol.grid = grids[i];
+        vol.target_count = gridLinspace(vol.jvals, vol.grid);
+        ROS_INFO("Generated %d of %d possible targets.", vol.target_count, vol.grid.xres*vol.grid.yres*vol.grid.zres);
+        _target_groups.push_back(vol);
+    }
 
-    _place_grid = place_grid;
-    ROS_INFO("Generating place joint values.");
-    _num_place_targets = gridLinspace(_place_jvals, _place_grid);
-
-    ROS_INFO("Generated %d of %d possible pick targets.", (int) _num_pick_targets, pick_grid.xres * pick_grid.yres * pick_grid.zres);
-    ROS_INFO("Genereted %d of %d possible place targets.", (int) _num_place_targets, place_grid.xres * place_grid.yres * place_grid.zres);
+    _num_target_groups = grids.size();
     return;
 }
 
@@ -286,6 +291,8 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
 {
     // Make a copy
     *traj_opt = *traj;
+    _time_parametizer->computeTimeStamps(*traj_opt);
+    return;
 
     std::size_t wpt_count = traj->getWayPointCount();
     ROS_INFO("Optimize starts with %d waypoints.", (int) wpt_count);
@@ -390,210 +397,215 @@ moveit_msgs::Constraints TrajectoryLibrary::genJointValueConstraint(joint_values
     return kinematic_constraints::constructGoalConstraints(state, _jmg, 0.01);
 }
 
-int TrajectoryLibrary::build()
+void TrajectoryLibrary::build()
 {
-    /* Check that target grids have been generated */
-    if (_num_pick_targets == 0 || _num_place_targets == 0)
+    /* Check that target groups have been generated */
+    if (_num_target_groups < 2)
     {
-        ROS_ERROR("No pick or place targets defined. Cannot build library.");
-        return 0;
+        ROS_ERROR("%d target groups defined. Need at least 2.", _num_target_groups);
+        return;
     }
 
-    _num_trajects = 0;
+    _num_plan_groups = 0;
 
-    /* Iterate through place targets */
-    for (int n = 0; n < _num_place_targets; n++)
+    /* Iterate through target groups for trajectory start location */
+    for (int i = 0; i < _num_target_groups; i++)
     {
-        //sleep(5);
-        // Solve IK for place position n
-        ROS_INFO("Jumping to place pose %d", n);
-        robot_state::RobotState place_state(_rmodel);
-        place_state.setJointGroupPositions(UR5_GROUP_NAME, _place_jvals[n]);
-        // Jump current state to place pose
-        _plan_scene->setCurrentState(place_state);
-        // Publish planning scene
-        moveit_msgs::PlanningScene scene_msg;
-        _plan_scene->getPlanningSceneDiffMsg(scene_msg);
-        _plan_scene_publisher.publish(scene_msg);
+        ROS_INFO("START GROUP: %d", i);
 
-        /* Iterate through pick targets */
-        for (int m = 0; m < _num_pick_targets; m++) {
-
-            ////////////////// Pick target
-
-            // Assume we are at a place pose
-            // Set a pick target
-            std::vector<moveit_msgs::Constraints> v_constraints;
-            v_constraints.push_back(genJointValueConstraint(_pick_jvals[m]));
-            // Generate trajectory
-            ur5_motion_plan pick_traj;
-            bool success = planTrajectory(pick_traj, v_constraints);
-            if (!success)
+        /* Iterate through target groups again for end location */
+        for (int j = 0; j < _num_target_groups; j++)
+        {
+            if (j == i)
             {
-                ROS_ERROR("Planner failed to generate plan for pick target %d. Skipping.", m);
+                // We don't want to generate paths between targets in the same group
                 continue;
             }
+            ROS_INFO("END GROUP: %d", j);
 
-            // Now change state to our pick target pose
-            _plan_scene->setCurrentState(pick_traj.end_state);
-            _plan_scene->getPlanningSceneDiffMsg(scene_msg);
-            _plan_scene_publisher.publish(scene_msg);
-            ROS_INFO("Successfully planned pick trajectory.");
+            plan_group p_group;
+            p_group.start_group = i;
+            p_group.end_group = j;
+            p_group.plan_count = 0;
 
-            // TODO: Attach object (ie apple) for return trajectory
-
-
-
-            //////////////////// Place target
-
-            // Assume we are at a pick pose
-            // Set a place target (in joint space)
-            v_constraints.clear();
-            v_constraints.push_back(genJointValueConstraint(_place_jvals[n]));;
-            // Generate trajectory
-            ur5_motion_plan place_traj;
-            success = planTrajectory(place_traj, v_constraints);
-            if (!success)
+            /* Pick particular start target */
+            for (int n = 0; n < _target_groups[i].target_count; n++)
             {
-                ROS_ERROR("Planner failed to generate plan for place target %d. Skipping.", m);
-                continue;
+                ROS_INFO("START TARGET: %d", n);
+
+                // Construct trajectory start state
+                robot_state::RobotState start_state(_rmodel);
+                start_state.setJointGroupPositions(UR5_GROUP_NAME, _target_groups[i].jvals[n]);
+                // TODO: Attach object if neccessary
+
+                // Update planning scene with start state
+                _plan_scene->setCurrentState(start_state);
+                // Publish planning scene
+                moveit_msgs::PlanningScene scene_msg;
+                _plan_scene->getPlanningSceneDiffMsg(scene_msg);
+                _plan_scene_publisher.publish(scene_msg);
+
+                /* Now pick particular end target */
+                for (int m = 0; m < _target_groups[j].target_count; m++)
+                {
+                    ROS_INFO("END TARGET: %d", m);
+
+                    // Generate constraint from target joint values
+                    std::vector<moveit_msgs::Constraints> v_constraints;
+                    v_constraints.push_back( genJointValueConstraint( _target_groups[j].jvals[m] ) );
+                    // Generate trajectory
+                    ur5_motion_plan plan;
+                    bool success = planTrajectory(plan, v_constraints);
+                    if (!success)
+                    {
+                        ROS_ERROR("Planner failed to generate plan for end target %d. Skipping.", m);
+                        continue;
+                    }
+
+                    // Now record start and stop locations
+                    plan.start_target_index = n;
+                    plan.end_target_index = m;
+
+                    // Store trajectory in plan group
+                    p_group.plans.push_back(plan);
+                    p_group.plan_count++;
+                }
             }
-            // Add trajectory to display message and publish to Rviz
-            moveit_msgs::DisplayTrajectory display_trajectory;
-            display_trajectory.trajectory_start = pick_traj.start_state;
-            display_trajectory.trajectory.push_back(pick_traj.trajectory);
-            display_trajectory.trajectory.push_back(place_traj.trajectory);
-            _trajectory_publisher.publish(display_trajectory);
 
-            // Now record indices of pick and place locations
-            pick_traj.start_target_index = n;
-            pick_traj.end_target_index = m;
-            place_traj.start_target_index = m;
-            place_traj.end_target_index = n;
-
-            // Store trajectories in library
-            _pick_trajects.push_back(pick_traj);
-            _place_trajects.push_back(place_traj);
-
-            // Now change state back to our place target pose
-            _plan_scene->setCurrentState(place_state);
-            _plan_scene->getPlanningSceneDiffMsg(scene_msg);
-            _plan_scene_publisher.publish(scene_msg);
-
-            // TODO: Detach object (apple) for next pick trajectory
-
-            ROS_INFO("Successfully planned place trajectory.");
-            _num_trajects++;
-            ROS_INFO("Trajectory set %d saved.", (int) _num_trajects);
-
-            /* Sleep a little to allow time for rviz to display path */
-            //sleep(1);
+            // Store plan group
+            _plan_groups.push_back(p_group);
+            _num_plan_groups++;
         }
     }
 
-    ROS_INFO("Generated %d trajectories out of a theoretical %d.", (int) _num_trajects, (int) (_num_pick_targets*_num_place_targets) );
-
-    return _num_trajects;
+    return;
 }
 
 void TrajectoryLibrary::demo()
 {
     srand(0);
 
-    int n; // Take n to be our place state index
-    int m; // Take m to be our pick state index
+    // Pick random trajectory to base our first search off of
+    int i = rand() % _num_plan_groups;
+    int n = rand() % _plan_groups[i].plan_count;
+    ur5_motion_plan* plan = _plan_groups[i].plans.data() + n;
 
-    bool success;
-    ur5_motion_plan plan;
-    robot_trajectory::RobotTrajectory traj(_rmodel, UR5_GROUP_NAME);
-    robot_state::RobotState end_state(_rmodel);
+    // Now extract end state and initialize end state to equal start state
     robot_state::RobotState start_state(_rmodel);
-    moveit_msgs::PlanningScene scene_msg;
-    std::size_t num_wpts;
-    double duration;
-    double j_dist;
+    robot_state::RobotState end_state(_rmodel);
+    moveit::core::robotStateMsgToRobotState(plan->end_state, end_state);
 
-    n = rand() % _num_place_targets; // Pick random place target
-    end_state.setJointGroupPositions(_jmg, _place_jvals[n]);
+    int prev_end_group = _plan_groups[i].end_group;
+    int prev_end_target = plan->end_target_index;
+
+    ROS_INFO("%d plan groups.", _num_plan_groups);
+    ROS_INFO("Starting at group %d target %d.", prev_end_group, prev_end_target);
 
     while (1)
     {
-        // Pick path
-        // Set current start state
-        _plan_scene->setCurrentState(end_state);
-        _plan_scene->getPlanningSceneDiffMsg(scene_msg);
-        _plan_scene_publisher.publish(scene_msg);
+        ///////////// Search randomly for next trajectory
+        std::vector<bool> tried;
+        tried.assign(_num_plan_groups, false);
+        bool success = false;
+        // First find valid plan group, until you've exhausted the list
+        while (std::find(tried.begin(), tried.end(), false) != tried.end())
+        {
+            i = rand() % _num_plan_groups;
+            if (tried[i])
+            {
+                continue;
+            }
+            if (_plan_groups[i].start_group == prev_end_group)
+            {
+                success = true;
+                break;
+            }
+            tried[i] = true;
+        }
 
-        int tries = 0;
-        do {
-            // Now select random pick target
-            m = rand() % _num_pick_targets;
-            // Fetch plan
-            success = getPickPlan(plan, n, m);
-            tries++;
-        } while (!success);\
+        if (!success)
+        {
+            ROS_INFO("No valid plan found. Random trajectory selected.");
+            i = rand() % _num_plan_groups;
+            n = rand() % _plan_groups[i].plan_count;
+        }
+        else
+        {
+            // Assuming we have valid plan group, now try to find valid plan
+            success = false;
+            tried.clear();
+            tried.assign(_plan_groups[i].plan_count, false);
+            while (std::find(tried.begin(), tried.end(), false) != tried.end())
+            {
+                n = rand() % _plan_groups[i].plan_count;
+                if (tried[n])
+                {
+                    continue;
+                }
+                if (_plan_groups[i].plans[n].start_target_index == prev_end_target)
+                {
+                    success = true;
+                    break;
+                }
+                tried[n] = true;
+            }
 
-        ROS_INFO("Found pick trajectory from place %d to pick %d after %d tries.", n, m, tries);
+            if (!success)
+            {
+                ROS_INFO("No valid plan found. Random trajectory selected.");
+                i = rand() % _num_plan_groups;
+                n = rand() % _plan_groups[i].plan_count;
+            }
+        }
 
-        // Build RobotTrajectory and RobotState objects from message
-        robot_state::robotStateMsgToRobotState(plan.start_state, start_state);
-        traj.setRobotTrajectoryMsg(start_state, plan.trajectory);
+        // Use i and n to assign plan
+        plan = _plan_groups[i].plans.data() + n;
+
+        ROS_INFO("Moving from group %d target %d to group %d target %d.", _plan_groups[i].start_group, plan->start_target_index,
+                 _plan_groups[i].end_group, plan->end_target_index);
+
+        // Update previous end target data
+        prev_end_group = _plan_groups[i].end_group;
+        prev_end_target = plan->end_target_index;
+
+        ////////////// Now demo the trajectory
+
+        // Extract start state
+        moveit::core::robotStateMsgToRobotState(plan->start_state, start_state);
+        ROS_INFO("Distance between start state and previous end state is %f.", start_state.distance(end_state));
+
+        // Extract end state
+        moveit::core::robotStateMsgToRobotState(plan->end_state, end_state);
+
         // Set current start state
         _plan_scene->setCurrentState(start_state);
+
+        // Publish planning scene and end state as separate messages
+        moveit_msgs::PlanningScene scene_msg;
         _plan_scene->getPlanningSceneDiffMsg(scene_msg);
         _plan_scene_publisher.publish(scene_msg);
-        // Get trajectory data
-        num_wpts = traj.getWayPointCount();
-        duration = plan.duration;
-        j_dist = start_state.distance(end_state);
-        ROS_INFO("Start state is %f from previous end state.", j_dist);
-        ROS_INFO("Trajectory has %d nodes and takes %f seconds.", (int) num_wpts, duration);
 
+        moveit_msgs::DisplayRobotState state_msg;
+        state_msg.state = plan->end_state;
+        _robot_state_publisher.publish(state_msg);
+
+        // Get trajectory data
+        robot_trajectory::RobotTrajectory traj(_rmodel, UR5_GROUP_NAME);
+        traj.setRobotTrajectoryMsg(start_state, plan->trajectory);
+        int num_wpts = plan->num_wpts;
+        double duration = traj.getWaypointDurationFromStart(num_wpts-1);
+        ROS_INFO("Trajectory has %d nodes and takes %f seconds.", num_wpts, duration);
+
+        // Publish trajectory
         moveit_msgs::DisplayTrajectory display_trajectory;
-        display_trajectory.trajectory_start = plan.start_state;
-        display_trajectory.trajectory.push_back(plan.trajectory);
-
-        // Update end_state
-        robot_state::robotStateMsgToRobotState(plan.end_state, end_state);
-
-        _execution_manager->pushAndExecute(plan.trajectory);
-
-        /* Place path */
-        tries = 0;
-        do {
-            // Now select random place target
-            n = rand() % _num_place_targets;
-            // Fetch plan
-            success = getPlacePlan(plan, m, n);
-            tries++;
-        } while (!success);
-
-        ROS_INFO("Found place trajectory from pick %d to place %d after %d tries.", m, n, tries);
-
-        // Build RobotTrajectory and RobotState objects from message
-        robot_state::robotStateMsgToRobotState(plan.start_state, start_state);
-        traj.setRobotTrajectoryMsg(start_state, plan.trajectory);
-        // Get trajectory data
-        num_wpts = traj.getWayPointCount();
-        duration += plan.duration;
-        j_dist = start_state.distance(end_state);
-        ROS_INFO("Start state is %f from previous end state.", j_dist);
-        ROS_INFO("Trajectory has %d nodes and takes %f seconds.", (int) num_wpts, plan.duration);
-
-        display_trajectory.trajectory.push_back(plan.trajectory);
+        display_trajectory.trajectory_start = plan->start_state;
+        display_trajectory.trajectory.push_back(plan->trajectory);
         _trajectory_publisher.publish(display_trajectory);
 
-        // Update end_state
-        robot_state::robotStateMsgToRobotState(plan.end_state, end_state);
-        // Set current start state
-        _plan_scene->setCurrentState(end_state);
-        _plan_scene->getPlanningSceneDiffMsg(scene_msg);
-        _plan_scene_publisher.publish(scene_msg);
+        // Execute trajectory
+        // _execution_manager->pushAndExecute(plan.trajectory);
 
-        _trajectory_publisher.publish(display_trajectory);
-
-        _execution_manager->pushAndExecute(plan.trajectory);
-
+        // Now delay for duration of trajectory
         ros::WallDuration sleep_time(duration);
         sleep_time.sleep();
     }
@@ -601,52 +613,47 @@ void TrajectoryLibrary::demo()
     return;
 }
 
-bool TrajectoryLibrary::getPickPlan(ur5_motion_plan &plan, int start_index, int end_index)
+bool TrajectoryLibrary::fetchPlan(ur5_motion_plan& plan, int start_group, int start_index, int end_group, int end_index)
 {
-    // For now just do linear search
-    for (int i=0; i < _num_trajects; i++)
+    // First find plan group
+    bool success = false;
+    plan_group* p_group;
+    for (int i=0; i < _num_plan_groups; i++)
     {
-        if (_pick_trajects[i].start_target_index == start_index)
+        p_group = &(_plan_groups[i]);
+        if (p_group->start_group == start_group && p_group->end_group == end_group)
         {
-            if (_pick_trajects[i].end_target_index == end_index)
-            {
-                plan = _pick_trajects[i];
-                return true;
-            }
-            // TODO: If we assume certain order of trajectories in vector.
-            // If pick location doesn't match up, maybe we can skip ahead a bit?
+            success = true;
+            break;
         }
     }
 
+    if (!success)
+    {
+        // We couldn't find corresponding plan group
+        return false;
+    }
+
+    // Now search for plan within group
+    for (int i=0; i < p_group->plan_count; i++)
+    {
+        if (p_group->plans[i].start_target_index == start_index)
+        {
+            if (p_group->plans[i].end_target_index == end_index)
+            {
+                plan = p_group->plans[i];
+                return true;
+            }
+        }
+    }
     // If no match
     return false;
 }
 
-bool TrajectoryLibrary::getPlacePlan(ur5_motion_plan &plan, int start_index, int end_index)
-{
-    // For now just do linear search
-    for (int i=0; i < _num_trajects; i++)
-    {
-        if (_place_trajects[i].start_target_index == start_index)
-        {
-            if (_place_trajects[i].start_target_index == end_index)
-            {
-                plan = _place_trajects[i];
-                return true;
-            }
-            // TODO: If we assume certain order of trajectories in vector.
-            // If pick location doesn't match up, maybe we can skip ahead a bit?
-        }
-    }
-
-    // If no match
-    return false;
-}
-
-bool TrajectoryLibrary::filewrite(std::vector<ur5_motion_plan> &Library, const char* filename, bool debug)
+bool TrajectoryLibrary::filewrite(const plan_group &p_group, const char* filename, bool debug)
 {
     bool check;
-    int itersize = Library.size();
+    int itersize = p_group.plan_count;
     int nodesize = 0;
     double radius = 0.05;
     int8_t ADD = 0;
@@ -660,51 +667,51 @@ bool TrajectoryLibrary::filewrite(std::vector<ur5_motion_plan> &Library, const c
         for (size_t n = 0; n < itersize; n++)
         {
             //RobotTrajectory -> JointTrajectory -> JointTrajectoryPoints
-            nodesize = Library[n].trajectory.joint_trajectory.points.size();
+            nodesize = p_group.plans[n].trajectory.joint_trajectory.points.size();
             ROS_INFO("%d",nodesize);
             file.write((char *)(&nodesize),sizeof(nodesize));
             for (size_t idx = 0; idx < nodesize; idx++)
             {
-                for (size_t i=0; i < 6; i++) file.write((char *)(&Library[n].trajectory.joint_trajectory.points[idx].positions[i]),sizeof(double));
-                file.write((char *)(&Library[n].trajectory.joint_trajectory.points[idx].time_from_start),sizeof(ros::Duration));
+                for (size_t i=0; i < 6; i++) file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.points[idx].positions[i]),sizeof(double));
+                file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.points[idx].time_from_start),sizeof(ros::Duration));
             }
 
             //RobotTrajectory -> JointTrajectory -> Header
-            file.write((char *)(&Library[n].trajectory.joint_trajectory.header.seq),sizeof(uint32_t));
-            file.write((char *)(&Library[n].trajectory.joint_trajectory.header.stamp),sizeof(ros::Time));
-            file << Library[n].trajectory.joint_trajectory.header.frame_id << '\n';
+            file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.header.seq),sizeof(uint32_t));
+            file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.header.stamp),sizeof(ros::Time));
+            file << p_group.plans[n].trajectory.joint_trajectory.header.frame_id << '\n';
 
             //RobotTrajectory -> JointTrajectory -> joint_names
-            for (size_t i=0; i < 6; i++) file << Library[n].trajectory.joint_trajectory.joint_names[i] << '\n';
+            for (size_t i=0; i < 6; i++) file << p_group.plans[n].trajectory.joint_trajectory.joint_names[i] << '\n';
 
 
             //start_state
             //RobotState -> JointState -> Header
-            file.write((char *)(&Library[n].start_state.joint_state.header.seq),sizeof(uint32_t));
-            file.write((char *)(&Library[n].start_state.joint_state.header.stamp),sizeof(ros::Time));
-            file << Library[n].start_state.joint_state.header.frame_id << '\n';
+            file.write((char *)(&p_group.plans[n].start_state.joint_state.header.seq),sizeof(uint32_t));
+            file.write((char *)(&p_group.plans[n].start_state.joint_state.header.stamp),sizeof(ros::Time));
+            file << p_group.plans[n].start_state.joint_state.header.frame_id << '\n';
             //RobotState -> JointState -> stirng & position
             for (size_t j = 0; j < 6; j++)
             {
-                file << Library[n].start_state.joint_state.name[j] << '\n';
-                file.write((char *)(&Library[n].start_state.joint_state.position[j]),sizeof(double));
+                file << p_group.plans[n].start_state.joint_state.name[j] << '\n';
+                file.write((char *)(&p_group.plans[n].start_state.joint_state.position[j]),sizeof(double));
             }
 
             //end_state
             //RobotState -> JointState -> Header
-            file.write((char *)(&Library[n].end_state.joint_state.header.seq),sizeof(uint32_t));
-            file.write((char *)(&Library[n].end_state.joint_state.header.stamp),sizeof(ros::Time));
-            file << Library[n].end_state.joint_state.header.frame_id << '\n';
+            file.write((char *)(&p_group.plans[n].end_state.joint_state.header.seq),sizeof(uint32_t));
+            file.write((char *)(&p_group.plans[n].end_state.joint_state.header.stamp),sizeof(ros::Time));
+            file << p_group.plans[n].end_state.joint_state.header.frame_id << '\n';
             //RobotState -> JointState -> stirng & position
             for (size_t j = 0; j < 6; j++)
             {
-                file << Library[n].end_state.joint_state.name[j] << '\n';
-                file.write((char *)(&Library[n].end_state.joint_state.position[j]),sizeof(double));
+                file << p_group.plans[n].end_state.joint_state.name[j] << '\n';
+                file.write((char *)(&p_group.plans[n].end_state.joint_state.position[j]),sizeof(double));
             }
 
             //index
-            file.write((char *)(&Library[n].start_target_index),sizeof(unsigned int));
-            file.write((char *)(&Library[n].end_target_index),sizeof(unsigned int));
+            file.write((char *)(&p_group.plans[n].start_target_index),sizeof(unsigned int));
+            file.write((char *)(&p_group.plans[n].end_target_index),sizeof(unsigned int));
 
             //write an apple
             file << "ee_link"  << '\n' << "apple" << '\n';
@@ -714,9 +721,9 @@ bool TrajectoryLibrary::filewrite(std::vector<ur5_motion_plan> &Library, const c
         }
 
 //        //string test;
-//        Library[0].trajectory.joint_trajectory.header.frame_id = "This is a Test. Also Im Hungry!!";
-//        std::cout << Library[0].trajectory.joint_trajectory.header.frame_id << '\n';
-//        file << Library[0].trajectory.joint_trajectory.header.frame_id  << '\n';
+//        p_group.plans[0].trajectory.joint_trajectory.header.frame_id = "This is a Test. Also Im Hungry!!";
+//        std::cout << p_group.plans[0].trajectory.joint_trajectory.header.frame_id << '\n';
+//        file << p_group.plans[0].trajectory.joint_trajectory.header.frame_id  << '\n';
 
         check = 1;
         file.close();
@@ -726,7 +733,7 @@ bool TrajectoryLibrary::filewrite(std::vector<ur5_motion_plan> &Library, const c
     return check;
 }
 
-bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const char* filename, bool debug)
+bool TrajectoryLibrary::fileread(plan_group& p_group, const char* filename, bool debug)
 {
     bool check;
     int wpt_count;
@@ -859,8 +866,7 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const ch
             // Other parameters
             ur5.num_wpts = wpt_count;
 
-
-            Library.push_back(ur5);
+            p_group.plans.push_back(ur5);
             ur5 = empty;
         }
 
@@ -874,33 +880,40 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan> &Library, const ch
     }
     else check = 0;
 
-    _num_trajects = plan_count;
+    p_group.plan_count = plan_count;
 
     return check;
 
 }
 
-bool TrajectoryLibrary::exportToFile()
+void TrajectoryLibrary::exportToFile()
 {
-    //SAVE DATA TO .bin FILE
+    // SAVE DATA TO .bin FILE
     ROS_INFO("--------------SAVING!!!!-------------------");
-    bool pickcheck = filewrite(_pick_trajects, "pickplan.bin",0);
-    bool placecheck = filewrite(_place_trajects, "placeplan.bin",0);
-    ROS_INFO("%d-----------DONE!!!!!!-----------------%d",pickcheck,placecheck);
-
-    return (pickcheck * placecheck);
+    for (int i = 0; i < _num_plan_groups; i++)
+    {
+        std::string filename = "plangroup" + boost::lexical_cast<std::string>(i) + ".bin";
+        filewrite(_plan_groups[i], filename.c_str(), false);
+    }
+    return;
 }
 
-bool TrajectoryLibrary::importFromFile()
+void TrajectoryLibrary::importFromFile(int num_plan_groups)
 {
-    /* Read stored trajectories from file */
+    _num_plan_groups = 0;
     //LOAD DATA FROM .bin FILE
     ROS_INFO("--------------LOADING!!!!-------------------");
-    bool pickcheck = fileread(_pick_trajects, "pickplan.bin",0);
-    bool placecheck = fileread(_place_trajects, "placeplan.bin",0);
-    ROS_INFO("%d-----------DONE!!!!!!-----------------%d",pickcheck,placecheck);
-
-    return (pickcheck * placecheck);
+    for (int i = 0; i < num_plan_groups; i++)
+    {
+        std::string filename = "plangroup" + boost::lexical_cast<std::string>(i) + ".bin";
+        plan_group p_group;
+        if ( fileread(p_group, filename.c_str(), false) )
+        {
+            _num_plan_groups++;
+            _plan_groups.push_back(p_group);
+        }
+    }
+    return;
 }
 
 //void TrajectoryLibrary::appleAttach()

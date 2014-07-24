@@ -67,10 +67,10 @@ typedef struct {
 } ur5_motion_plan;
 
 typedef struct {
-    std::vector<ur5_motion_plan> plans;
-    int plan_count;
     int start_group;
     int end_group;
+    std::vector<ur5_motion_plan> plans;
+    int plan_count;
 } plan_group;
 
 enum target_groups {
@@ -101,6 +101,7 @@ class TrajectoryLibrary
     // Publisher
     ros::Publisher _trajectory_publisher;
     ros::Publisher _plan_scene_publisher;
+    ros::Publisher _robot_state_publisher;
 
     // Private methods
     std::size_t gridLinspace(std::vector<joint_values_t>& jvals, rect_grid& grid);
@@ -117,25 +118,21 @@ class TrajectoryLibrary
     bool ikValidityCallback(robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals);
 
     // File write and read
-    bool filewrite(std::vector<ur5_motion_plan> &Library, const char* filename, bool debug);
-    bool fileread(std::vector<ur5_motion_plan> &Library, const char* filename, bool debug);
+    bool filewrite(const plan_group& p_group, const char* filename, bool debug);
+    bool fileread(plan_group& p_group, const char* filename, bool debug);
 
 public:
     TrajectoryLibrary(ros::NodeHandle& nh);
 
     void initWorld();
-    void generateJvals(rect_grid& pick_grid, rect_grid& place_grid);
-    int build();
+    void generateTargets(const std::vector<rect_grid> grids);
+    void build();
     void demo();
 
-    bool getPickPlan(ur5_motion_plan& plan, int start_index, int end_index);
-    bool getPlacePlan(ur5_motion_plan& plan, int pick_start, int place_end);
+    bool fetchPlan(ur5_motion_plan &plan, int start_group, int start_index, int end_group, int end_index);
 
-    bool exportToFile();
-    bool importFromFile();
-
-    inline std::size_t getNumTrajectories() { return _num_trajects; }
-
+    void exportToFile();
+    void importFromFile(int num_plan_groups);
 };
 
 #endif // TRAJECTORY_LIBRARY_H

@@ -10,7 +10,7 @@ int main(int argc, char** argv)
     tlib.initWorld();
 
     // TODO: Make sure we can get number of pick and place locations
-    tlib.importFromFile();
+    tlib.importFromFile(2);
 
     ROS_INFO("Hit enter to begin demo.");
     std::cin.ignore(100, '\n');
