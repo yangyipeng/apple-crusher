@@ -3,8 +3,8 @@
 
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "TrajectoryLibary");
-    ros::NodeHandle nh("nh1");
+    ros::init(argc, argv, "Demo Library");
+    ros::NodeHandle nh("~");
 
     TrajectoryLibrary tlib(nh);
     tlib.initWorld();

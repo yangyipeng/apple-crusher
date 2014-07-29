@@ -58,8 +58,8 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle& nh)
     // Create publisher for rviz
     _trajectory_publisher = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, true);
     _plan_scene_publisher = nh.advertise<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", 1, true);
-    _robot_state_publisher = nh.advertise<moveit_msgs::DisplayRobotState>("display_robot_state", 1, true);
-    _collision_object_publisher = nh.advertise<moveit_msgs::CollisionObject>("collision_object", 1);
+    _robot_state_publisher = nh.advertise<moveit_msgs::DisplayRobotState>("/display_robot_state", 1, true);
+    _collision_object_publisher = nh.advertise<moveit_msgs::CollisionObject>("/collision_object", 1);
 
     _num_plan_groups = 0;
     _num_target_groups = 0;
@@ -72,36 +72,65 @@ void TrajectoryLibrary::initWorld()
     collision_detection::WorldPtr world = _plan_scene->getWorldNonConst();
 
     moveit_msgs::CollisionObject object_msg;
-
-    // Define workspace limits with planes
-    shapes::ShapeConstPtr ground_plane(new shapes::Plane(0,0,1,0));
     geometry_msgs::Pose pose;
-    pose.orientation.w = 1;
-    pose.orientation.x = 0;
-    pose.orientation.y = 0;
-    pose.orientation.z = 0;
-    pose.position.x = 0;
-    pose.position.y = 0;
-    pose.position.z = 0;
-    Eigen::Affine3d eigen_pose;
-    tf::poseMsgToEigen(pose, eigen_pose);
-    world->addToObject("workspace_bounds", ground_plane, eigen_pose);
-    _acm.setEntry("workspace_bounds", "world", true);
-    _acm.setEntry("workspace_bounds", "base_link", true);
 
-    // Publish object
-    shape_msgs::Plane plane;
-    plane.coef[0] = 0;
-    plane.coef[1] = 0;
-    plane.coef[2] = 1;
-    plane.coef[3] = 0;
-    object_msg.id = "workspace_bounds";
-    object_msg.header.frame_id = "world";
-    object_msg.planes.push_back(plane);
-    object_msg.primitive_poses.push_back(pose);
-    object_msg.operation = object_msg.ADD;
-    _collision_object_publisher.publish(object_msg);
+//    ///////////////// Workspace box
+//    shapes::ShapeConstPtr ws_box(new shapes::Box(WORKSPACE_BOUNDS_X,WORKSPACE_BOUNDS_Y,WORKSPACE_BOUNDS_Z));
+//    pose.orientation.w = 1;
+//    pose.orientation.x = 0;
+//    pose.orientation.y = 0;
+//    pose.orientation.z = 0;
+//    pose.position.x = 0;
+//    pose.position.y = 0;
+//    pose.position.z = 0;
+//    Eigen::Affine3d eigen_pose;
+//    tf::poseMsgToEigen(pose, eigen_pose);
+//    //world->addToObject("ws_box", ws_box, eigen_pose);
 
+//    _acm.setEntry("ws_box", "world", true);
+//    _acm.setEntry("ws_box", "base_link", true);
+//    _acm.setEntry("ws_box", "shoulder_link", true);
+
+//    // Publish object
+//    shape_msgs::SolidPrimitive primitive_box;
+//    primitive_box.type = primitive_box.BOX;
+//    primitive_box.dimensions.resize(3);
+//    primitive_box.dimensions[primitive_box.BOX_X] = WORKSPACE_BOUNDS_X;
+//    primitive_box.dimensions[primitive_box.BOX_Y] = WORKSPACE_BOUNDS_Y;
+//    primitive_box.dimensions[primitive_box.BOX_Z] = WORKSPACE_BOUNDS_Z;
+//    object_msg.id = "ws_box";
+//    object_msg.header.frame_id = "world";
+//    object_msg.primitives.push_back(primitive_box);
+//    object_msg.primitive_poses.push_back(pose);
+//    object_msg.operation = object_msg.ADD;
+//    //_collision_object_publisher.publish(object_msg);
+
+//    ///////////////// Z LOW plane
+//    shapes::ShapeConstPtr plane_zlow(new shapes::Plane(0,0,1,0));
+//    pose.position.x = 0;
+//    pose.position.y = 0;
+//    pose.position.z = 0;
+//    tf::poseMsgToEigen(pose, eigen_pose);
+//    //world->addToObject("plane_zlow", plane_zlow, eigen_pose);
+
+//    _acm.setEntry("plane_zlow", "world", true);
+//    _acm.setEntry("plane_zlow", "base_link", true);
+//    _acm.setEntry("plane_zlow", "shoulder_link", true);
+
+//    // Publish object
+//    shape_msgs::Plane zlow;
+//    zlow.coef[0] = 0;
+//    zlow.coef[1] = 0;
+//    zlow.coef[2] = 0;
+//    zlow.coef[3] = 1;
+//    object_msg.id = "plane_zlow";
+//    object_msg.header.frame_id = "world";
+//    object_msg.planes.push_back(zlow);
+//    object_msg.primitive_poses.push_back(pose);
+//    object_msg.operation = object_msg.ADD;
+    //_collision_object_publisher.publish(object_msg);
+
+    /////////////////// Obstructo sphere
     // Add obstructo-sphere in middle of workspace
 //    shapes::ShapeConstPtr obstructo(new shapes::Sphere(0.2));
 //    pose.position.x = 0;
@@ -113,17 +142,28 @@ void TrajectoryLibrary::initWorld()
 //    _acm.setEntry("obstructo_sphere", "base_link", true);
 //    _acm.setEntry("obstructo_sphere", "shoulder_link", true);
 
-//    // Publish object
-//    shape_msgs::SolidPrimitive primitive;
-//    primitive.type = primitive.SPHERE;
-//    primitive.dimensions.resize(1);
-//    primitive.dimensions[0] = 0.2;
-//    object_msg.id = "obstructo_sphere";
-//    object_msg.header.frame_id = "world";
-//    object_msg.primitives.push_back(primitive);
-//    object_msg.primitive_poses.push_back(pose);
-//    object_msg.operation = object_msg.ADD;
-//    _collision_object_publisher.publish(object_msg);
+    // Publish object
+    shape_msgs::SolidPrimitive primitive;
+    primitive.type = primitive.BOX;
+    primitive.dimensions.resize(3);
+    primitive.dimensions[0] = 0.2;
+    primitive.dimensions[1] = 0.1;
+    primitive.dimensions[2] = 0.2;
+    pose.orientation.w = 1;
+    pose.orientation.x = 0;
+    pose.orientation.y = 0;
+    pose.orientation.z = 0;
+    pose.position.x = 0;
+    pose.position.y = 0;
+    pose.position.z = 0.7;
+    object_msg.id = "obstructo_sphere";
+    object_msg.header.frame_id = "world";
+    object_msg.primitives.clear();
+    object_msg.primitives.push_back(primitive);
+    object_msg.primitive_poses.clear();
+    object_msg.primitive_poses.push_back(pose);
+    object_msg.operation = object_msg.ADD;
+    _plan_scene->processCollisionObjectMsg(object_msg);
 
     // Publish updated planning scene
     moveit_msgs::PlanningScene scene_msg;
@@ -202,7 +242,8 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
 
 bool TrajectoryLibrary::ikValidityCallback(robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals)
 {
-    // Check for self-collisions
+    // Check for collisions
+    //collision_world::ConstPtr world = plan_scene->getCollisionWorld();
     p_state->setJointGroupPositions(p_jmg, jvals);
     p_state->update(true);
     return _plan_scene->isStateValid(*p_state, p_jmg->getName());
@@ -256,12 +297,12 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
     req.allowed_planning_time = 5.0;
 
     // Define workspace
-    req.workspace_parameters.max_corner.x = 1.0;
-    req.workspace_parameters.max_corner.y = 1.0;
-    req.workspace_parameters.max_corner.z = 0.7;
-    req.workspace_parameters.min_corner.x = -1.0;
-    req.workspace_parameters.min_corner.y = -1.0;
-    req.workspace_parameters.min_corner.z = 0.25;
+    req.workspace_parameters.max_corner.x = WORKSPACE_BOUNDS_X/2.0;
+    req.workspace_parameters.max_corner.y = WORKSPACE_BOUNDS_Y/2.0;
+    req.workspace_parameters.max_corner.z = WORKSPACE_BOUNDS_Z;
+    req.workspace_parameters.min_corner.x = -WORKSPACE_BOUNDS_X/2.0;
+    req.workspace_parameters.min_corner.y = -WORKSPACE_BOUNDS_Y/2.0;
+    req.workspace_parameters.min_corner.z = 0.0;
 
     // Now prepare the planning context
     int tries = 0;
@@ -285,7 +326,7 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
             optimizeTrajectory(traj_opt, traj);
 
             // Now slow it down for safety
-            // timeWarpTrajectory(traj_opt, 3);
+            timeWarpTrajectory(traj_opt, 3);
 
             // Pack motion plan struct
             moveit::core::robotStateToRobotStateMsg(_plan_scene->getCurrentState(), plan.start_state);
@@ -529,6 +570,9 @@ void TrajectoryLibrary::demo()
 
     while (1)
     {
+        // Computation time
+        boost::posix_time::ptime compute_time_start = boost::posix_time::microsec_clock::universal_time();
+
         ///////////// Search randomly for next trajectory
         std::vector<bool> tried;
         tried.assign(_num_plan_groups, false);
@@ -594,6 +638,10 @@ void TrajectoryLibrary::demo()
         prev_end_group = _plan_groups[i].end_group;
         prev_end_target = plan->end_target_index;
 
+        // Computation time
+        boost::posix_time::ptime compute_time_end = boost::posix_time::microsec_clock::universal_time();
+        ROS_INFO("Computation time = %d usec.", (int) (compute_time_end - compute_time_start).total_microseconds());
+
         ////////////// Now demo the trajectory
 
         // Extract start state
@@ -620,6 +668,10 @@ void TrajectoryLibrary::demo()
         traj.setRobotTrajectoryMsg(start_state, plan->trajectory);
         int num_wpts = plan->num_wpts;
         double duration = traj.getWaypointDurationFromStart(num_wpts-1);
+        if (duration - plan->duration > 0.05)
+        {
+            ROS_ERROR("Duration fields do not match. %f - %f = %f.", duration, plan->duration, duration-plan->duration);
+        }
         ROS_INFO("Trajectory has %d nodes and takes %f seconds.", num_wpts, duration);
 
         // Publish trajectory
@@ -632,8 +684,8 @@ void TrajectoryLibrary::demo()
         _execution_manager->pushAndExecute(plan->trajectory);
 
         // Now delay for duration of trajectory
-//        ros::WallDuration sleep_time(duration);
-//        sleep_time.sleep();
+        ros::WallDuration sleep_time(duration);
+        sleep_time.sleep();
         _execution_manager->waitForExecution();
     }
 
@@ -677,92 +729,89 @@ bool TrajectoryLibrary::fetchPlan(ur5_motion_plan& plan, int start_group, int st
     return false;
 }
 
-bool TrajectoryLibrary::filewrite(const plan_group &p_group, const char* filename, bool debug)
+bool TrajectoryLibrary::filewrite(const plan_group &p_group, const char* filename, bool debug = false)
 {
-    bool check;
-    int itersize = p_group.plan_count;
-    int nodesize = 0;
+    int plan_count = p_group.plan_count;
+    int node_count;
     double radius = 0.05;
     int8_t ADD = 0;
 
     std::ofstream file;
     file.open (filename, std::ofstream::out | std::ofstream::binary);
-    if(file.is_open())
+
+    // If file didn't open correctly
+    if (!file.is_open())
     {
-        file.write((char *)(&itersize),sizeof(itersize));
-        if (debug == 1) ROS_INFO("%d",itersize);
-        for (size_t n = 0; n < itersize; n++)
+        return false;
+    }
+
+    // First write plan_group meta info
+    file.write((char *) &p_group.start_group, sizeof(p_group.start_group)); // start target group
+    file.write((char *) &p_group.end_group, sizeof(p_group.end_group));     // end target group
+    file.write((char *)(&plan_count),sizeof(plan_count));                   // number of plans
+
+    if (debug == 1) ROS_INFO("%d",plan_count);
+    for (size_t n = 0; n < plan_count; n++)
+    {
+        //RobotTrajectory -> JointTrajectory -> JointTrajectoryPoints
+        node_count = p_group.plans[n].trajectory.joint_trajectory.points.size();
+        ROS_INFO("%d",node_count);
+        file.write((char *)(&node_count),sizeof(node_count));
+        for (size_t idx = 0; idx < node_count; idx++)
         {
-            //RobotTrajectory -> JointTrajectory -> JointTrajectoryPoints
-            nodesize = p_group.plans[n].trajectory.joint_trajectory.points.size();
-            ROS_INFO("%d",nodesize);
-            file.write((char *)(&nodesize),sizeof(nodesize));
-            for (size_t idx = 0; idx < nodesize; idx++)
-            {
-                for (size_t i=0; i < 6; i++) file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.points[idx].positions[i]),sizeof(double));
-                file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.points[idx].time_from_start),sizeof(ros::Duration));
-            }
-
-            //RobotTrajectory -> JointTrajectory -> Header
-            file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.header.seq),sizeof(uint32_t));
-            file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.header.stamp),sizeof(ros::Time));
-            file << p_group.plans[n].trajectory.joint_trajectory.header.frame_id << '\n';
-
-            //RobotTrajectory -> JointTrajectory -> joint_names
-            for (size_t i=0; i < 6; i++) file << p_group.plans[n].trajectory.joint_trajectory.joint_names[i] << '\n';
-
-
-            //start_state
-            //RobotState -> JointState -> Header
-            file.write((char *)(&p_group.plans[n].start_state.joint_state.header.seq),sizeof(uint32_t));
-            file.write((char *)(&p_group.plans[n].start_state.joint_state.header.stamp),sizeof(ros::Time));
-            file << p_group.plans[n].start_state.joint_state.header.frame_id << '\n';
-            //RobotState -> JointState -> stirng & position
-            for (size_t j = 0; j < 6; j++)
-            {
-                file << p_group.plans[n].start_state.joint_state.name[j] << '\n';
-                file.write((char *)(&p_group.plans[n].start_state.joint_state.position[j]),sizeof(double));
-            }
-
-            //end_state
-            //RobotState -> JointState -> Header
-            file.write((char *)(&p_group.plans[n].end_state.joint_state.header.seq),sizeof(uint32_t));
-            file.write((char *)(&p_group.plans[n].end_state.joint_state.header.stamp),sizeof(ros::Time));
-            file << p_group.plans[n].end_state.joint_state.header.frame_id << '\n';
-            //RobotState -> JointState -> stirng & position
-            for (size_t j = 0; j < 6; j++)
-            {
-                file << p_group.plans[n].end_state.joint_state.name[j] << '\n';
-                file.write((char *)(&p_group.plans[n].end_state.joint_state.position[j]),sizeof(double));
-            }
-
-            //index
-            file.write((char *)(&p_group.plans[n].start_target_index),sizeof(unsigned int));
-            file.write((char *)(&p_group.plans[n].end_target_index),sizeof(unsigned int));
-
-            //write an apple
-            file << "ee_link"  << '\n' << "apple" << '\n';
-            file.write((char *)(&radius),sizeof(double));
-
-
+            for (size_t i=0; i < 6; i++) file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.points[idx].positions[i]),sizeof(double));
+            file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.points[idx].time_from_start),sizeof(ros::Duration));
         }
 
-//        //string test;
-//        p_group.plans[0].trajectory.joint_trajectory.header.frame_id = "This is a Test. Also Im Hungry!!";
-//        std::cout << p_group.plans[0].trajectory.joint_trajectory.header.frame_id << '\n';
-//        file << p_group.plans[0].trajectory.joint_trajectory.header.frame_id  << '\n';
+        //RobotTrajectory -> JointTrajectory -> Header
+        file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.header.seq),sizeof(uint32_t));
+        file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.header.stamp),sizeof(ros::Time));
+        file << p_group.plans[n].trajectory.joint_trajectory.header.frame_id << '\n';
 
-        check = 1;
-        file.close();
+        //RobotTrajectory -> JointTrajectory -> joint_names
+        for (size_t i=0; i < 6; i++) file << p_group.plans[n].trajectory.joint_trajectory.joint_names[i] << '\n';
+
+
+        //start_state
+        //RobotState -> JointState -> Header
+        file.write((char *)(&p_group.plans[n].start_state.joint_state.header.seq),sizeof(uint32_t));
+        file.write((char *)(&p_group.plans[n].start_state.joint_state.header.stamp),sizeof(ros::Time));
+        file << p_group.plans[n].start_state.joint_state.header.frame_id << '\n';
+        //RobotState -> JointState -> stirng & position
+        for (size_t j = 0; j < 6; j++)
+        {
+            file << p_group.plans[n].start_state.joint_state.name[j] << '\n';
+            file.write((char *)(&p_group.plans[n].start_state.joint_state.position[j]),sizeof(double));
+        }
+
+        //end_state
+        //RobotState -> JointState -> Header
+        file.write((char *)(&p_group.plans[n].end_state.joint_state.header.seq),sizeof(uint32_t));
+        file.write((char *)(&p_group.plans[n].end_state.joint_state.header.stamp),sizeof(ros::Time));
+        file << p_group.plans[n].end_state.joint_state.header.frame_id << '\n';
+        //RobotState -> JointState -> stirng & position
+        for (size_t j = 0; j < 6; j++)
+        {
+            file << p_group.plans[n].end_state.joint_state.name[j] << '\n';
+            file.write((char *)(&p_group.plans[n].end_state.joint_state.position[j]),sizeof(double));
+        }
+
+        //index
+        file.write((char *)(&p_group.plans[n].start_target_index),sizeof(unsigned int));
+        file.write((char *)(&p_group.plans[n].end_target_index),sizeof(unsigned int));
+
+        //write an apple
+        file << "ee_link"  << '\n' << "apple" << '\n';
+        file.write((char *)(&radius),sizeof(double));
     }
-    else check = 0;
 
-    return check;
+    file.close();
+
+    return true;
 }
 
-bool TrajectoryLibrary::fileread(plan_group& p_group, const char* filename, bool debug)
+bool TrajectoryLibrary::fileread(plan_group& p_group, const char* filename, bool debug = false)
 {
-    bool check;
     int wpt_count;
     int plan_count;
 
@@ -783,133 +832,129 @@ bool TrajectoryLibrary::fileread(plan_group& p_group, const char* filename, bool
     std::ifstream info;
     info.open(filename,std::ifstream::in | std::ofstream::binary);
 
-    if(info.is_open())
+    if(!info.is_open())
     {
-        // Iterate through trajectories
-        info.read((char*)(&plan_count),sizeof(plan_count));
-
-        if (debug == 1) ROS_INFO("%d",plan_count);
-        for (size_t n = 0; n < plan_count; n++)
-        {
-            // Iterate through waypoints
-            info.read((char*)(&wpt_count),sizeof(wpt_count));
-            temp.push_back(wpt_count);
-            if (debug == 1) ROS_INFO("%d",wpt_count);
-            for (size_t idx = 0; idx < wpt_count; idx++)
-            {
-                for (size_t i=0; i<6; i++)
-                {
-                    info.read((char *)(&temp_double),sizeof(temp_double));
-                    temp_points.positions.push_back(temp_double);
-                }
-                info.read((char *)(&temp_duration),sizeof(temp_duration));
-                //ros::Duration d(z);
-                temp_points.time_from_start = temp_duration;
-                ur5.trajectory.joint_trajectory.points.push_back(temp_points);
-                temp_points = blank;
-
-            }
-
-            //RobotTrajectory -> JointTrajectory -> Header
-            info.read((char *)(&ur5.trajectory.joint_trajectory.header.seq),sizeof(uint32_t));
-            info.read((char *)(&ur5.trajectory.joint_trajectory.header.stamp),sizeof(ros::Time));
-            getline (info,ur5.trajectory.joint_trajectory.header.frame_id);
-
-            //RobotTrajectory -> JointTrajectory -> joint_names
-            for (size_t i=0; i < 6; i++)
-            {
-                getline(info,temp_string);
-                ur5.trajectory.joint_trajectory.joint_names.push_back(temp_string);
-                temp_string = blank_string;
-            }
-
-            //start_state
-            //RobotState -> JointState -> Header
-            info.read((char *)(&ur5.start_state.joint_state.header.seq),sizeof(uint32_t));
-            info.read((char *)(&ur5.start_state.joint_state.header.stamp),sizeof(ros::Time));
-            getline (info,ur5.start_state.joint_state.header.frame_id);
-
-            //RobotState -> JointState -> stirng & position
-            for (size_t j = 0; j < 6; j++)
-            {
-                getline(info,temp_string);
-                ur5.start_state.joint_state.name.push_back(temp_string);
-                temp_string = blank_string;
-
-                info.read((char *)(&temp_double),sizeof(temp_double));
-                ur5.start_state.joint_state.position.push_back(temp_double);
-            }
-
-            //end_state
-            //RobotState -> JointState -> Header
-            info.read((char *)(&ur5.end_state.joint_state.header.seq),sizeof(uint32_t));
-            info.read((char *)(&ur5.end_state.joint_state.header.stamp),sizeof(ros::Time));
-            getline (info,ur5.end_state.joint_state.header.frame_id);
-
-            //RobotState -> JointState -> stirng & position
-            for (size_t j = 0; j < 6; j++)
-            {
-                getline(info,temp_string);
-                ur5.end_state.joint_state.name.push_back(temp_string);
-                temp_string = blank_string;
-
-                info.read((char *)(&temp_double),sizeof(temp_double));
-                ur5.end_state.joint_state.position.push_back(temp_double);
-
-            }
-
-            //Index
-            info.read((char *)(&ur5.start_target_index),sizeof(unsigned int));
-            info.read((char *)(&ur5.end_target_index),sizeof(unsigned int));
-
-            //read an apple
-            /* Define the attached object message*/
-            getline(info,temp_string);
-            std::cout << temp_string << '\n';
-            ur5.end_state.attached_collision_objects.resize(1);
-            ur5.end_state.attached_collision_objects[0].link_name = temp_string;
-            ur5.end_state.attached_collision_objects[0].object.header.frame_id = temp_string;
-            temp_string = blank_string;
-            getline(info,temp_string);
-            ur5.end_state.attached_collision_objects[0].object.id = temp_string;
-            temp_string = blank_string;
-
-            /* Define a box to be attached */
-            geometry_msgs::Pose pose;
-            shape_msgs::SolidPrimitive primitive;
-            ROS_INFO("TESTING");
-            info.read((char *)(&temp_double),sizeof(double));
-            pose.position.x = temp_double;
-            primitive.type = primitive.SPHERE;
-            primitive.dimensions.resize(1);
-            primitive.dimensions[0] = temp_double;
-
-            ur5.end_state.attached_collision_objects[0].object.primitives.push_back(primitive);
-            ur5.end_state.attached_collision_objects[0].object.primitive_poses.push_back(pose);
-
-            /* An attach operation requires an ADD */
-            ur5.end_state.attached_collision_objects[0].object.operation = ur5.end_state.attached_collision_objects[0].object.ADD;
-
-            // Other parameters
-            ur5.num_wpts = wpt_count;
-
-            p_group.plans.push_back(ur5);
-            ur5 = empty;
-        }
-
-//        //string test;
-//        std::string James;
-//        getline (info,James);
-//        std::cout << James << '\n';
-
-        check = 1;
-        info.close();
+        return false;
     }
-    else check = 0;
 
+    // First read meta data
+    info.read((char*) &p_group.start_group, sizeof(p_group.start_group));   // Start group
+    info.read((char*) &p_group.end_group, sizeof(p_group.end_group));       // End group
+    info.read((char*)(&plan_count), sizeof(plan_count));                    // Number of plans
     p_group.plan_count = plan_count;
 
-    return check;
+    if (debug == 1) ROS_INFO("%d",plan_count);
+    for (size_t n = 0; n < plan_count; n++)
+    {
+        // Iterate through waypoints
+        info.read((char*)(&wpt_count),sizeof(wpt_count));
+        temp.push_back(wpt_count);
+        if (debug == 1) ROS_INFO("%d",wpt_count);
+        for (size_t idx = 0; idx < wpt_count; idx++)
+        {
+            for (size_t i=0; i<6; i++)
+            {
+                info.read((char *)(&temp_double),sizeof(temp_double));
+                temp_points.positions.push_back(temp_double);
+            }
+            info.read((char *)(&temp_duration),sizeof(temp_duration));
+            //ros::Duration d(z);
+            temp_points.time_from_start = temp_duration;
+            ur5.trajectory.joint_trajectory.points.push_back(temp_points);
+            temp_points = blank;
+
+        }
+
+        //RobotTrajectory -> JointTrajectory -> Header
+        info.read((char *)(&ur5.trajectory.joint_trajectory.header.seq),sizeof(uint32_t));
+        info.read((char *)(&ur5.trajectory.joint_trajectory.header.stamp),sizeof(ros::Time));
+        getline (info,ur5.trajectory.joint_trajectory.header.frame_id);
+
+        //RobotTrajectory -> JointTrajectory -> joint_names
+        for (size_t i=0; i < 6; i++)
+        {
+            getline(info,temp_string);
+            ur5.trajectory.joint_trajectory.joint_names.push_back(temp_string);
+            temp_string = blank_string;
+        }
+
+        //start_state
+        //RobotState -> JointState -> Header
+        info.read((char *)(&ur5.start_state.joint_state.header.seq),sizeof(uint32_t));
+        info.read((char *)(&ur5.start_state.joint_state.header.stamp),sizeof(ros::Time));
+        getline (info,ur5.start_state.joint_state.header.frame_id);
+
+        //RobotState -> JointState -> stirng & position
+        for (size_t j = 0; j < 6; j++)
+        {
+            getline(info,temp_string);
+            ur5.start_state.joint_state.name.push_back(temp_string);
+            temp_string = blank_string;
+
+            info.read((char *)(&temp_double),sizeof(temp_double));
+            ur5.start_state.joint_state.position.push_back(temp_double);
+        }
+
+        //end_state
+        //RobotState -> JointState -> Header
+        info.read((char *)(&ur5.end_state.joint_state.header.seq),sizeof(uint32_t));
+        info.read((char *)(&ur5.end_state.joint_state.header.stamp),sizeof(ros::Time));
+        getline (info,ur5.end_state.joint_state.header.frame_id);
+
+        //RobotState -> JointState -> stirng & position
+        for (size_t j = 0; j < 6; j++)
+        {
+            getline(info,temp_string);
+            ur5.end_state.joint_state.name.push_back(temp_string);
+            temp_string = blank_string;
+
+            info.read((char *)(&temp_double),sizeof(temp_double));
+            ur5.end_state.joint_state.position.push_back(temp_double);
+
+        }
+
+        //Index
+        info.read((char *)(&ur5.start_target_index),sizeof(unsigned int));
+        info.read((char *)(&ur5.end_target_index),sizeof(unsigned int));
+
+        //read an apple
+        /* Define the attached object message*/
+        getline(info,temp_string);
+        if (debug) { std::cout << temp_string << '\n'; }
+        ur5.end_state.attached_collision_objects.resize(1);
+        ur5.end_state.attached_collision_objects[0].link_name = temp_string;
+        ur5.end_state.attached_collision_objects[0].object.header.frame_id = temp_string;
+        temp_string = blank_string;
+        getline(info,temp_string);
+        ur5.end_state.attached_collision_objects[0].object.id = temp_string;
+        temp_string = blank_string;
+
+        /* Define a box to be attached */
+        geometry_msgs::Pose pose;
+        shape_msgs::SolidPrimitive primitive;
+        if (debug) { ROS_INFO("TESTING"); }
+        info.read((char *)(&temp_double),sizeof(double));
+        pose.position.x = temp_double;
+        primitive.type = primitive.SPHERE;
+        primitive.dimensions.resize(1);
+        primitive.dimensions[0] = temp_double;
+
+        ur5.end_state.attached_collision_objects[0].object.primitives.push_back(primitive);
+        ur5.end_state.attached_collision_objects[0].object.primitive_poses.push_back(pose);
+
+        /* An attach operation requires an ADD */
+        ur5.end_state.attached_collision_objects[0].object.operation = ur5.end_state.attached_collision_objects[0].object.ADD;
+
+        // Other parameters
+        ur5.num_wpts = wpt_count;
+
+        p_group.plans.push_back(ur5);
+        ur5 = empty;
+    }
+
+    info.close();
+
+    return true;
 
 }
 

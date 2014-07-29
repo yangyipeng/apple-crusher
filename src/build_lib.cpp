@@ -3,7 +3,7 @@
 
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "Build Lib");
+    ros::init(argc, argv, "Build Library");
     ros::NodeHandle nh("~");
 
     TrajectoryLibrary tlib(nh);
@@ -15,15 +15,15 @@ int main(int argc, char** argv)
     pickVol.orientation.x = 0;
     pickVol.orientation.y = 0;
     pickVol.orientation.z = 0;
-    pickVol.xlim_low = -0.60;
-    pickVol.xlim_high = 0.60;
+    pickVol.xlim_low = -0.38;
+    pickVol.xlim_high = 0.38;
     pickVol.xres = 5;
-    pickVol.ylim_high = -0.40;
-    pickVol.ylim_low = 0.40;
+    pickVol.ylim_high = -0.38;
+    pickVol.ylim_low = 0.38;
     pickVol.yres = 4;
-    pickVol.zlim_low = 0.30;
-    pickVol.zlim_high = 0.35;
-    pickVol.zres = 1;
+    pickVol.zlim_low = 0.35;
+    pickVol.zlim_high = 0.45;
+    pickVol.zres = 2;
 
     rect_grid placeVol;
     placeVol.orientation.w = 0;

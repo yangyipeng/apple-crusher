@@ -33,6 +33,10 @@
 #define UR5_GROUP_NAME "manipulator"
 #define DT_LOCAL_COLLISION_CHECK 0.05
 
+#define WORKSPACE_BOUNDS_X 10.0
+#define WORKSPACE_BOUNDS_Y 10.0
+#define WORKSPACE_BOUNDS_Z 10.0
+
 typedef struct {
     double xlim_low;
     double xlim_high;
