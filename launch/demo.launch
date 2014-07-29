@@ -10,9 +10,14 @@
     <arg name="limited" value="$(arg limited)"/>
   </include>
 
-  <include file="$(find ur5_moveit_config)/launch/trajectory_execution.launch.xml"/>
+  <!-- Remap follow_joint_trajectory -->
+  <remap if="$(arg sim)" from="/follow_joint_trajectory" to="/arm_controller/follow_joint_trajectory"/>
+
+  <group ns="demo">
+  	<include file="$(find ur5_moveit_config)/launch/trajectory_execution.launch.xml"/>
+  </group>
   
-  <node name="demo_lib" pkg="apple_crusher" type="demo" respawn="false" launch-prefix="$(arg launch_prefix)" output="screen">
+  <node name="demo" pkg="apple_crusher" type="demo" respawn="false" launch-prefix="$(arg launch_prefix)" output="screen">
     <rosparam command="load" file="$(find ur5_moveit_config)/config/kinematics.yaml"/>
     <param name="/planning_plugin" value="ompl_interface/OMPLPlanner"/>
     <rosparam command="load" file="$(find ur5_moveit_config)/config/ompl_planning.yaml"/>
