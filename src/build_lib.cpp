@@ -7,7 +7,11 @@ int main(int argc, char** argv)
     ros::NodeHandle nh("~");
 
     TrajectoryLibrary tlib(nh);
+    ROS_INFO("Initializing world.");
     tlib.initWorld();
+
+    ROS_INFO("Hit enter to generate target joint values.");
+    std::cin.ignore(100, '\n');
 
     /* Define pick and place volumes */
     rect_grid pickVol;
@@ -15,14 +19,14 @@ int main(int argc, char** argv)
     pickVol.orientation.x = 0;
     pickVol.orientation.y = 0;
     pickVol.orientation.z = 0;
-    pickVol.xlim_low = -0.38;
-    pickVol.xlim_high = 0.38;
-    pickVol.xres = 5;
-    pickVol.ylim_high = -0.38;
-    pickVol.ylim_low = 0.38;
-    pickVol.yres = 4;
-    pickVol.zlim_low = 0.35;
-    pickVol.zlim_high = 0.45;
+    pickVol.xlim_low = -0.25;
+    pickVol.xlim_high = 0.25;
+    pickVol.xres = 3;
+    pickVol.ylim_high = -0.25;
+    pickVol.ylim_low = 0.25;
+    pickVol.yres = 3;
+    pickVol.zlim_low = 0.70;
+    pickVol.zlim_high = 0.80;
     pickVol.zres = 2;
 
     rect_grid placeVol;
@@ -30,15 +34,15 @@ int main(int argc, char** argv)
     placeVol.orientation.x = -1;
     placeVol.orientation.y = 0;
     placeVol.orientation.z = 0;
-    placeVol.xlim_low = -0.3;
-    placeVol.xlim_high = -0.25;
+    placeVol.xlim_low = -.10;
+    placeVol.xlim_high = 0.10;
     placeVol.xres = 2;
-    placeVol.ylim_low = 0.5;
-    placeVol.ylim_high = 0.7;
-    placeVol.yres = 3;
-    placeVol.zlim_low = 0.35;
-    placeVol.zlim_high = 0.50;
-    placeVol.zres = 1;
+    placeVol.ylim_low = -.10;
+    placeVol.ylim_high = 0.10;
+    placeVol.yres = 2;
+    placeVol.zlim_low = 0.25;
+    placeVol.zlim_high = 0.35;
+    placeVol.zres = 2;
 
     std::vector<rect_grid> grids;
     grids.push_back(pickVol);

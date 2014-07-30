@@ -74,96 +74,103 @@ void TrajectoryLibrary::initWorld()
     moveit_msgs::CollisionObject object_msg;
     geometry_msgs::Pose pose;
 
-//    ///////////////// Workspace box
-//    shapes::ShapeConstPtr ws_box(new shapes::Box(WORKSPACE_BOUNDS_X,WORKSPACE_BOUNDS_Y,WORKSPACE_BOUNDS_Z));
+    ///////////////// Define workspace bounds as set of 6 planes
+    object_msg.header.frame_id = "world";
+    object_msg.operation = object_msg.ADD;
+
+    // Zlow plane
+    object_msg.id = "zlow_plane";
+    shape_msgs::Plane plane;
+    pose.orientation.w = 1;
+    pose.position.x = 0;
+    pose.position.y = 0;
+    pose.position.z = 0;
+    //pose.position.z = 0.05;
+    plane.coef[0] = 0;
+    plane.coef[1] = 0;
+    plane.coef[2] = 1;
+    plane.coef[3] = 0;
+    object_msg.planes.push_back(plane);
+    object_msg.plane_poses.push_back(pose);
+    _plan_scene->processCollisionObjectMsg(object_msg);
+    _acm.setEntry("zlow_plane", "world", true);
+    _acm.setEntry("zlow_plane", "base_link", true);
+    _acm.setEntry("zlow_plane", "shoulder_link", true);
+
+    // Zhigh plane
+    object_msg.id = "zhigh_plane";
+    pose.position.z = 0.9;
+    object_msg.planes[0] = plane;
+    object_msg.plane_poses[0] = pose;
+    _plan_scene->processCollisionObjectMsg(object_msg);
+
+    // Ylow plane
+    object_msg.id = "ylow_plane";
+    plane.coef[0] = 0;
+    plane.coef[1] = 1;
+    plane.coef[2] = 0;
+    plane.coef[3] = 0;
+    pose.position.x = 0;
+    pose.position.y = -0.40;
+    pose.position.z = 0;
+    object_msg.planes[0] = plane;
+    object_msg.plane_poses[0] = pose;
+    _plan_scene->processCollisionObjectMsg(object_msg);
+
+    // Yhigh plane
+    object_msg.id = "yhigh_plane";
+    pose.position.y = 0.4;
+    object_msg.planes[0] = plane;
+    object_msg.plane_poses[0] = pose;
+    _plan_scene->processCollisionObjectMsg(object_msg);
+
+    // Xlow plane
+    object_msg.id = "xlow_plane";
+    plane.coef[0] = 1;
+    plane.coef[1] = 0;
+    plane.coef[2] = 0;
+    plane.coef[3] = 0;
+    pose.position.x = -0.4;
+    pose.position.y = 0;
+    pose.position.z = 0;
+    object_msg.planes[0] = plane;
+    object_msg.plane_poses[0] = pose;
+    _plan_scene->processCollisionObjectMsg(object_msg);
+
+    // Xhigh plane
+    object_msg.id = "xhigh_plane";
+    pose.position.x = 0.4;
+    object_msg.planes[0] = plane;
+    object_msg.plane_poses[0] = pose;
+    _plan_scene->processCollisionObjectMsg(object_msg);
+
+    /////////////////// Obstructo sphere
+//    // Publish object
+//    shape_msgs::SolidPrimitive primitive;
+//    primitive.type = primitive.BOX;
+//    primitive.dimensions.resize(3);
+//    primitive.dimensions[0] = 0.2;
+//    primitive.dimensions[1] = 0.1;
+//    primitive.dimensions[2] = 0.2;
 //    pose.orientation.w = 1;
 //    pose.orientation.x = 0;
 //    pose.orientation.y = 0;
 //    pose.orientation.z = 0;
 //    pose.position.x = 0;
 //    pose.position.y = 0;
-//    pose.position.z = 0;
-//    Eigen::Affine3d eigen_pose;
-//    tf::poseMsgToEigen(pose, eigen_pose);
-//    //world->addToObject("ws_box", ws_box, eigen_pose);
-
-//    _acm.setEntry("ws_box", "world", true);
-//    _acm.setEntry("ws_box", "base_link", true);
-//    _acm.setEntry("ws_box", "shoulder_link", true);
-
-//    // Publish object
-//    shape_msgs::SolidPrimitive primitive_box;
-//    primitive_box.type = primitive_box.BOX;
-//    primitive_box.dimensions.resize(3);
-//    primitive_box.dimensions[primitive_box.BOX_X] = WORKSPACE_BOUNDS_X;
-//    primitive_box.dimensions[primitive_box.BOX_Y] = WORKSPACE_BOUNDS_Y;
-//    primitive_box.dimensions[primitive_box.BOX_Z] = WORKSPACE_BOUNDS_Z;
-//    object_msg.id = "ws_box";
-//    object_msg.header.frame_id = "world";
-//    object_msg.primitives.push_back(primitive_box);
-//    object_msg.primitive_poses.push_back(pose);
-//    object_msg.operation = object_msg.ADD;
-//    //_collision_object_publisher.publish(object_msg);
-
-//    ///////////////// Z LOW plane
-//    shapes::ShapeConstPtr plane_zlow(new shapes::Plane(0,0,1,0));
-//    pose.position.x = 0;
-//    pose.position.y = 0;
-//    pose.position.z = 0;
-//    tf::poseMsgToEigen(pose, eigen_pose);
-//    //world->addToObject("plane_zlow", plane_zlow, eigen_pose);
-
-//    _acm.setEntry("plane_zlow", "world", true);
-//    _acm.setEntry("plane_zlow", "base_link", true);
-//    _acm.setEntry("plane_zlow", "shoulder_link", true);
-
-//    // Publish object
-//    shape_msgs::Plane zlow;
-//    zlow.coef[0] = 0;
-//    zlow.coef[1] = 0;
-//    zlow.coef[2] = 0;
-//    zlow.coef[3] = 1;
-//    object_msg.id = "plane_zlow";
-//    object_msg.header.frame_id = "world";
-//    object_msg.planes.push_back(zlow);
-//    object_msg.primitive_poses.push_back(pose);
-//    object_msg.operation = object_msg.ADD;
-    //_collision_object_publisher.publish(object_msg);
-
-    /////////////////// Obstructo sphere
-    // Add obstructo-sphere in middle of workspace
-//    shapes::ShapeConstPtr obstructo(new shapes::Sphere(0.2));
-//    pose.position.x = 0;
-//    pose.position.y = 0;
 //    pose.position.z = 0.7;
-//    tf::poseMsgToEigen(pose, eigen_pose);
-//    world->addToObject("obstructo_sphere", obstructo, eigen_pose);
+//    object_msg.id = "obstructo_sphere";
+//    object_msg.header.frame_id = "world";
+//    object_msg.primitives.clear();
+//    object_msg.primitives.push_back(primitive);
+//    object_msg.primitive_poses.clear();
+//    object_msg.primitive_poses.push_back(pose);
+//    object_msg.operation = object_msg.ADD;
+//    _plan_scene->processCollisionObjectMsg(object_msg);
+
 //    _acm.setEntry("obstructo_sphere", "world", true);
 //    _acm.setEntry("obstructo_sphere", "base_link", true);
 //    _acm.setEntry("obstructo_sphere", "shoulder_link", true);
-
-    // Publish object
-    shape_msgs::SolidPrimitive primitive;
-    primitive.type = primitive.BOX;
-    primitive.dimensions.resize(3);
-    primitive.dimensions[0] = 0.2;
-    primitive.dimensions[1] = 0.1;
-    primitive.dimensions[2] = 0.2;
-    pose.orientation.w = 1;
-    pose.orientation.x = 0;
-    pose.orientation.y = 0;
-    pose.orientation.z = 0;
-    pose.position.x = 0;
-    pose.position.y = 0;
-    pose.position.z = 0.7;
-    object_msg.id = "obstructo_sphere";
-    object_msg.header.frame_id = "world";
-    object_msg.primitives.clear();
-    object_msg.primitives.push_back(primitive);
-    object_msg.primitive_poses.clear();
-    object_msg.primitive_poses.push_back(pose);
-    object_msg.operation = object_msg.ADD;
-    _plan_scene->processCollisionObjectMsg(object_msg);
 
     // Publish updated planning scene
     moveit_msgs::PlanningScene scene_msg;
@@ -171,13 +178,7 @@ void TrajectoryLibrary::initWorld()
     _plan_scene_publisher.publish(scene_msg);
 
     _plan_scene->printKnownObjects(std::cout);
-    std::vector<std::string> collision_detector_names;
-    _plan_scene->getCollisionDetectorNames(collision_detector_names);
-    for (int i=0; i < collision_detector_names.size(); i++)
-    {
-        std::cout << "CD: " << collision_detector_names[i] << std::endl;
-    }
-
+    _acm.print(std::cout);
     return;
 }
 
@@ -246,7 +247,7 @@ bool TrajectoryLibrary::ikValidityCallback(robot_state::RobotState* p_state, con
     //collision_world::ConstPtr world = plan_scene->getCollisionWorld();
     p_state->setJointGroupPositions(p_jmg, jvals);
     p_state->update(true);
-    return _plan_scene->isStateValid(*p_state, p_jmg->getName());
+    return _plan_scene->isStateValid(*p_state, p_jmg->getName(), false);
 }
 
 void TrajectoryLibrary::generateTargets(const std::vector<rect_grid> grids)
@@ -289,34 +290,46 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
     planning_interface::MotionPlanResponse res;
     req.group_name = UR5_GROUP_NAME;
 
+    moveit::core::robotStateToRobotStateMsg(_plan_scene->getCurrentState(), req.start_state);
+
     // Add constraints
     req.goal_constraints = constraints;
     //req.planner_id = "manipulator[LBKPIECEkConfigDefault]";
     req.planner_id = "manipulator[RRTConnectkConfigDefault]";
     //req.planner_id = "manipulator[RRTstarkConfigDefault]";
-    req.allowed_planning_time = 5.0;
+    req.allowed_planning_time = 10.0;
+
+    // req.num_planning_attempts = 3;
+
 
     // Define workspace
-    req.workspace_parameters.max_corner.x = WORKSPACE_BOUNDS_X/2.0;
-    req.workspace_parameters.max_corner.y = WORKSPACE_BOUNDS_Y/2.0;
-    req.workspace_parameters.max_corner.z = WORKSPACE_BOUNDS_Z;
-    req.workspace_parameters.min_corner.x = -WORKSPACE_BOUNDS_X/2.0;
-    req.workspace_parameters.min_corner.y = -WORKSPACE_BOUNDS_Y/2.0;
-    req.workspace_parameters.min_corner.z = 0.0;
+    req.workspace_parameters.header.frame_id = "world";
+    req.workspace_parameters.max_corner.x = 0.38;
+    req.workspace_parameters.max_corner.y = 0.38;
+    req.workspace_parameters.max_corner.z = 1.0;
+    req.workspace_parameters.min_corner.x = -0.38;
+    req.workspace_parameters.min_corner.y = -0.38;
+    req.workspace_parameters.min_corner.z = 0.05;
 
     // Now prepare the planning context
     int tries = 0;
     while (tries < 3)
     {
         planning_interface::PlanningContextPtr context = _planner->getPlanningContext(_plan_scene, req, res.error_code_);
+        ROS_INFO("Planning frame is %s.", _plan_scene->getPlanningFrame().c_str());
         context->solve(res);
         if (res.error_code_.val == res.error_code_.SUCCESS)
         {
             robot_trajectory::RobotTrajectoryPtr traj(res.trajectory_);
 
-            if (!_plan_scene->isPathValid(*traj, UR5_GROUP_NAME))
+            std::vector<std::size_t> invalid_index;
+            if (!_plan_scene->isPathValid(*traj, UR5_GROUP_NAME, true, &invalid_index))
             {
                 ROS_ERROR("Path invalid.");
+                for (int i = 0; i < invalid_index.size(); i++)
+                {
+                    ROS_ERROR("Invalid index %d", (int) invalid_index[i]);
+                }
                 tries++;
                 continue;
             }
@@ -327,6 +340,18 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
 
             // Now slow it down for safety
             timeWarpTrajectory(traj_opt, 3);
+
+            // Check validity one last time
+            if (!_plan_scene->isPathValid(*traj_opt, UR5_GROUP_NAME, true, &invalid_index))
+            {
+                ROS_ERROR("Post-processed path invalid.");
+                for (int i = 0; i < invalid_index.size(); i++)
+                {
+                    ROS_ERROR("Invalid index %d", (int) invalid_index[i]);
+                }
+                tries++;
+                continue;
+            }
 
             // Pack motion plan struct
             moveit::core::robotStateToRobotStateMsg(_plan_scene->getCurrentState(), plan.start_state);
