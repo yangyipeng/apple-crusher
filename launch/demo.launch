@@ -3,15 +3,12 @@
   <arg unless="$(arg debug)" name="launch_prefix" value="" />
   <arg if="$(arg debug)" name="launch_prefix" value="gdb --ex run --args" />
   <arg name="limited" default="true" />
-  <arg name="sim" default="true"/>
+  <arg name="sim" default="false"/>
 
-  <include file="$(find ur5_moveit_config)/launch/planning_context.launch">
-    <arg name="load_robot_description" value="true"/>
-    <arg name="limited" value="$(arg limited)"/>
-  </include>
-
-  <!-- Remap follow_joint_trajectory -->
+  <!-- Remap follow_joint_trajectory >
   <remap if="$(arg sim)" from="/follow_joint_trajectory" to="/arm_controller/follow_joint_trajectory"/>
+	
+  < -->
 
   <group ns="demo">
   	<include file="$(find ur5_moveit_config)/launch/trajectory_execution.launch.xml"/>

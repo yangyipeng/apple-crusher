@@ -20,6 +20,7 @@
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit/trajectory_processing/iterative_time_parameterization.h>
 #include <moveit/trajectory_execution_manager/trajectory_execution_manager.h>
+#include <moveit/planning_pipeline/planning_pipeline.h>
 #include <moveit/kinematic_constraints/utils.h>
 #include <moveit_msgs/DisplayTrajectory.h>
 #include <moveit_msgs/PlanningScene.h>
@@ -101,6 +102,7 @@ class TrajectoryLibrary
     collision_detection::AllowedCollisionMatrix _acm;
     planning_scene::PlanningScenePtr _plan_scene;
     planning_interface::PlannerManagerPtr _planner;
+    planning_pipeline::PlanningPipelinePtr _planning_pipeline;
     boost::shared_ptr<trajectory_processing::IterativeParabolicTimeParameterization> _time_parametizer;
     trajectory_execution_manager::TrajectoryExecutionManagerPtr _execution_manager;
 
@@ -115,6 +117,7 @@ class TrajectoryLibrary
     bool planTrajectory(ur5_motion_plan& plan, std::vector<moveit_msgs::Constraints> constraints);
     void optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr traj_opt, robot_trajectory::RobotTrajectoryPtr traj);
     void timeWarpTrajectory(robot_trajectory::RobotTrajectoryPtr traj, double slow_factor);
+    void computeVelocities(robot_trajectory::RobotTrajectoryPtr traj);
 
     void printPose(const geometry_msgs::Pose& pose);
     void printJointValues(const joint_values_t& jvals);

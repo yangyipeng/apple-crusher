@@ -19,31 +19,8 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle& nh)
     _plan_scene = planning_scene::PlanningScenePtr(new planning_scene::PlanningScene(_rmodel));
     _acm = _plan_scene->getAllowedCollisionMatrixNonConst();
 
-    /* Load the planner */
-    ROS_INFO("Loading the planner plugin.");
-    boost::scoped_ptr<pluginlib::ClassLoader<planning_interface::PlannerManager> > planner_plugin_loader;
-    try
-    {
-        planner_plugin_loader.reset(new pluginlib::ClassLoader<planning_interface::PlannerManager>("moveit_core", "planning_interface::PlannerManager"));
-    }
-    catch(pluginlib::PluginlibException& ex)
-    {
-        ROS_FATAL_STREAM("Exception while creating planning plugin loader " << ex.what());
-    }
-    try
-    {
-        _planner.reset(planner_plugin_loader->createUnmanagedInstance("ompl_interface/OMPLPlanner"));
-        _planner->initialize(_rmodel, nh.getNamespace());
-    }
-    catch(pluginlib::PluginlibException& ex)
-    {
-        const std::vector<std::string> &classes = planner_plugin_loader->getDeclaredClasses();
-        std::stringstream ss;
-        for (std::size_t i = 0 ; i < classes.size() ; ++i)
-        ss << classes[i] << " ";
-        ROS_ERROR_STREAM("Exception while loading planner: " << ex.what() << std::endl
-                       << "Available plugins: " << ss.str());
-    }
+    // Load up the planning pipeline
+    _planning_pipeline.reset(new planning_pipeline::PlanningPipeline(_rmodel, nh, "/planning_plugin", "/planning_adapters"));
 
     // Initialize time parameterizer
     _time_parametizer.reset(new trajectory_processing::IterativeParabolicTimeParameterization());
@@ -75,74 +52,74 @@ void TrajectoryLibrary::initWorld()
     geometry_msgs::Pose pose;
 
     ///////////////// Define workspace bounds as set of 6 planes
-    object_msg.header.frame_id = "world";
-    object_msg.operation = object_msg.ADD;
+//    object_msg.header.frame_id = "world";
+//    object_msg.operation = object_msg.ADD;
 
-    // Zlow plane
-    object_msg.id = "zlow_plane";
-    shape_msgs::Plane plane;
-    pose.orientation.w = 1;
-    pose.position.x = 0;
-    pose.position.y = 0;
-    pose.position.z = 0;
-    //pose.position.z = 0.05;
-    plane.coef[0] = 0;
-    plane.coef[1] = 0;
-    plane.coef[2] = 1;
-    plane.coef[3] = 0;
-    object_msg.planes.push_back(plane);
-    object_msg.plane_poses.push_back(pose);
-    _plan_scene->processCollisionObjectMsg(object_msg);
-    _acm.setEntry("zlow_plane", "world", true);
-    _acm.setEntry("zlow_plane", "base_link", true);
-    _acm.setEntry("zlow_plane", "shoulder_link", true);
+//    // Zlow plane
+//    object_msg.id = "zlow_plane";
+//    shape_msgs::Plane plane;
+//    pose.orientation.w = 1;
+//    pose.position.x = 0;
+//    pose.position.y = 0;
+//    pose.position.z = 0;
+//    //pose.position.z = 0.05;
+//    plane.coef[0] = 0;
+//    plane.coef[1] = 0;
+//    plane.coef[2] = 1;
+//    plane.coef[3] = 0;
+//    object_msg.planes.push_back(plane);
+//    object_msg.plane_poses.push_back(pose);
+//    _plan_scene->processCollisionObjectMsg(object_msg);
+//    _acm.setEntry("zlow_plane", "world", true);
+//    _acm.setEntry("zlow_plane", "base_link", true);
+//    _acm.setEntry("zlow_plane", "shoulder_link", true);
 
-    // Zhigh plane
-    object_msg.id = "zhigh_plane";
-    pose.position.z = 0.9;
-    object_msg.planes[0] = plane;
-    object_msg.plane_poses[0] = pose;
-    _plan_scene->processCollisionObjectMsg(object_msg);
+//    // Zhigh plane
+//    object_msg.id = "zhigh_plane";
+//    pose.position.z = 0.9;
+//    object_msg.planes[0] = plane;
+//    object_msg.plane_poses[0] = pose;
+//    _plan_scene->processCollisionObjectMsg(object_msg);
 
-    // Ylow plane
-    object_msg.id = "ylow_plane";
-    plane.coef[0] = 0;
-    plane.coef[1] = 1;
-    plane.coef[2] = 0;
-    plane.coef[3] = 0;
-    pose.position.x = 0;
-    pose.position.y = -0.40;
-    pose.position.z = 0;
-    object_msg.planes[0] = plane;
-    object_msg.plane_poses[0] = pose;
-    _plan_scene->processCollisionObjectMsg(object_msg);
+//    // Ylow plane
+//    object_msg.id = "ylow_plane";
+//    plane.coef[0] = 0;
+//    plane.coef[1] = 1;
+//    plane.coef[2] = 0;
+//    plane.coef[3] = 0;
+//    pose.position.x = 0;
+//    pose.position.y = -0.40;
+//    pose.position.z = 0;
+//    object_msg.planes[0] = plane;
+//    object_msg.plane_poses[0] = pose;
+//    _plan_scene->processCollisionObjectMsg(object_msg);
 
-    // Yhigh plane
-    object_msg.id = "yhigh_plane";
-    pose.position.y = 0.4;
-    object_msg.planes[0] = plane;
-    object_msg.plane_poses[0] = pose;
-    _plan_scene->processCollisionObjectMsg(object_msg);
+//    // Yhigh plane
+//    object_msg.id = "yhigh_plane";
+//    pose.position.y = 0.4;
+//    object_msg.planes[0] = plane;
+//    object_msg.plane_poses[0] = pose;
+//    _plan_scene->processCollisionObjectMsg(object_msg);
 
-    // Xlow plane
-    object_msg.id = "xlow_plane";
-    plane.coef[0] = 1;
-    plane.coef[1] = 0;
-    plane.coef[2] = 0;
-    plane.coef[3] = 0;
-    pose.position.x = -0.4;
-    pose.position.y = 0;
-    pose.position.z = 0;
-    object_msg.planes[0] = plane;
-    object_msg.plane_poses[0] = pose;
-    _plan_scene->processCollisionObjectMsg(object_msg);
+//    // Xlow plane
+//    object_msg.id = "xlow_plane";
+//    plane.coef[0] = 1;
+//    plane.coef[1] = 0;
+//    plane.coef[2] = 0;
+//    plane.coef[3] = 0;
+//    pose.position.x = -0.4;
+//    pose.position.y = 0;
+//    pose.position.z = 0;
+//    object_msg.planes[0] = plane;
+//    object_msg.plane_poses[0] = pose;
+//    _plan_scene->processCollisionObjectMsg(object_msg);
 
-    // Xhigh plane
-    object_msg.id = "xhigh_plane";
-    pose.position.x = 0.4;
-    object_msg.planes[0] = plane;
-    object_msg.plane_poses[0] = pose;
-    _plan_scene->processCollisionObjectMsg(object_msg);
+//    // Xhigh plane
+//    object_msg.id = "xhigh_plane";
+//    pose.position.x = 0.4;
+//    object_msg.planes[0] = plane;
+//    object_msg.plane_poses[0] = pose;
+//    _plan_scene->processCollisionObjectMsg(object_msg);
 
     /////////////////// Obstructo sphere
 //    // Publish object
@@ -315,9 +292,7 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
     int tries = 0;
     while (tries < 3)
     {
-        planning_interface::PlanningContextPtr context = _planner->getPlanningContext(_plan_scene, req, res.error_code_);
-        ROS_INFO("Planning frame is %s.", _plan_scene->getPlanningFrame().c_str());
-        context->solve(res);
+        _planning_pipeline->generatePlan(_plan_scene, req, res);
         if (res.error_code_.val == res.error_code_.SUCCESS)
         {
             robot_trajectory::RobotTrajectoryPtr traj(res.trajectory_);
@@ -334,12 +309,24 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
                 continue;
             }
 
+            for (int n = 0; n < traj->getWayPointCount(); n++)
+            {
+                robot_state::RobotState wpt = traj->getWayPoint(n);
+                if (!wpt.hasVelocities())
+                {
+                    ROS_ERROR("Waypoint %d does not have velocities.", n);
+                }
+            }
+
             // Do optimization
             robot_trajectory::RobotTrajectoryPtr traj_opt(new robot_trajectory::RobotTrajectory(_rmodel, UR5_GROUP_NAME));
             optimizeTrajectory(traj_opt, traj);
 
             // Now slow it down for safety
             timeWarpTrajectory(traj_opt, 3);
+
+            // Now generate velocities
+            computeVelocities(traj);
 
             // Check validity one last time
             if (!_plan_scene->isPathValid(*traj_opt, UR5_GROUP_NAME, true, &invalid_index))
@@ -459,6 +446,35 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
     _time_parametizer->computeTimeStamps(*traj_opt);
 
     ROS_INFO("Successfully trimmed %d nodes.", (int) (traj->getWayPointCount() - traj_opt->getWayPointCount()) );
+    return;
+}
+
+void TrajectoryLibrary::computeVelocities(robot_trajectory::RobotTrajectoryPtr traj)
+{
+    std::size_t num_wpts = traj->getWayPointCount();
+
+    for (int i=1; i < num_wpts; i++)
+    {
+        robot_state::RobotStatePtr wpt = traj->getWayPointPtr(i);
+        robot_state::RobotStatePtr wpt_prev = traj->getWayPointPtr(i-1);
+
+        double duration = traj->getWayPointDurationFromPrevious(i);
+
+        // Iterate through joints
+        std::size_t num_joints = wpt->getVariableCount();
+        for (int j=0; j < num_joints; j++)
+        {
+            // Calculate joint movement distance
+            double joint_dist = wpt->getVariablePosition(j) - wpt_prev->getVariablePosition(j);
+            // Calculate joint velocity given desired duration
+            double vel = joint_dist / duration;
+            // Set joint velocity for waypoint
+            ROS_INFO("Waypoint %d joint %d with duration %f has velocity %f.", i, j, duration, wpt->getVariableVelocity(j));
+            wpt->setVariableVelocity(j, vel);
+            ROS_INFO("Assigned waypoint %d joint %d with duration %f a velocity of %f.", i, j, duration, vel);
+        }
+    }
+
     return;
 }
 
@@ -659,6 +675,15 @@ void TrajectoryLibrary::demo()
         ROS_INFO("Moving from group %d target %d to group %d target %d.", _plan_groups[i].start_group, plan->start_target_index,
                  _plan_groups[i].end_group, plan->end_target_index);
 
+        // Get RobotTrajectory object from msg
+        robot_trajectory::RobotTrajectory traj(_rmodel, UR5_GROUP_NAME);
+        traj.setRobotTrajectoryMsg(start_state, plan->trajectory);
+        if (!_plan_scene->isPathValid(traj, UR5_GROUP_NAME))
+        {
+            ROS_ERROR("Path invalid. Skipping.");
+            continue;
+        }
+
         // Update previous end target data
         prev_end_group = _plan_groups[i].end_group;
         prev_end_target = plan->end_target_index;
@@ -689,9 +714,9 @@ void TrajectoryLibrary::demo()
         _robot_state_publisher.publish(state_msg);
 
         // Get trajectory data
-        robot_trajectory::RobotTrajectory traj(_rmodel, UR5_GROUP_NAME);
-        traj.setRobotTrajectoryMsg(start_state, plan->trajectory);
         int num_wpts = plan->num_wpts;
+        if (_plan_scene->isPathValid(traj));
+
         double duration = traj.getWaypointDurationFromStart(num_wpts-1);
         if (duration - plan->duration > 0.05)
         {
@@ -704,6 +729,13 @@ void TrajectoryLibrary::demo()
         display_trajectory.trajectory_start = plan->start_state;
         display_trajectory.trajectory.push_back(plan->trajectory);
         _trajectory_publisher.publish(display_trajectory);
+
+        ROS_INFO("Starting from joint values: ");
+        joint_values_t jvals;
+        start_state.copyJointGroupPositions(_jmg, jvals);
+        printJointValues(jvals);
+        ROS_INFO("Press enter when ready.");
+        while (std::cin.get() != '\n');
 
         // Execute trajectory
         _execution_manager->pushAndExecute(plan->trajectory);
