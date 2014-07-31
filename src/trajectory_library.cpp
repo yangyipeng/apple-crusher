@@ -197,34 +197,69 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
                 geo_pose.position.y = grid.ylim_low + j*dj;
                 geo_pose.position.z = grid.zlim_low + k*dk;
                 geo_pose.orientation = grid.orientation;
+
+                // We want to generate a number of joint value targets for each geo pose
                 bool ik_success;
-                // Do IK
-                ik_success = state->setFromIK(_jmg, geo_pose, 10, 0.2, boost::bind(&TrajectoryLibrary::ikValidityCallback, this, _1, _2, _3));
-                if (!ik_success)
+                std::vector<joint_values_t> geo_jvals;
+                for (int tries = 0; tries < 10; tries++)
                 {
-                    ROS_WARN("Could not solve IK for pose %d: Skipping.", n);
-                    printPose(geo_pose);
-                    continue;
+                    // Do IK
+                    ik_success = state->setFromIK(_jmg, geo_pose, 10, 0.2, boost::bind(&TrajectoryLibrary::ikValidityCallback, this, geo_jvals, _1, _2, _3));
+                    if (!ik_success)
+                    {
+                        ROS_WARN("Could not solve IK for pose %d: Skipping.", n);
+                        printPose(geo_pose);
+                        break;
+                    }
+
+                    // If IK succeeded
+                    joint_values_t j;
+                    state->copyJointGroupPositions(_jmg, j);
+                    // Add to vector
+                    geo_jvals.push_back(j);
+                    ROS_INFO("Successfully generated joint values for pose %d.", n);
                 }
-                // If IK succeeded
-                joint_values_t j;
-                state->copyJointGroupPositions(_jmg, j);
-                // Add to vector
-                ROS_INFO("Successfully generated joint values for pose %d.", n);
-                jvals.push_back(j);
+                // Now we push any values contained in geo_jvals into our jvals vector
+                for (int n = 0; n < geo_jvals.size(); n++)
+                {
+                    jvals.push_back(geo_jvals[n]);
+                }
             }
         }
     }
     return jvals.size();
 }
 
-bool TrajectoryLibrary::ikValidityCallback(robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals)
+bool TrajectoryLibrary::ikValidityCallback(const std::vector<joint_values_t>& comparison_values, robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals)
 {
-    // Check for collisions
-    //collision_world::ConstPtr world = plan_scene->getCollisionWorld();
+    // ROS_INFO("IK Validity checker...");
+    // Construct state from given joint values
     p_state->setJointGroupPositions(p_jmg, jvals);
     p_state->update(true);
-    return _plan_scene->isStateValid(*p_state, p_jmg->getName(), false);
+
+    // Check if state is valid
+    if (!_plan_scene->isStateValid(*p_state, p_jmg->getName(), false))
+    {
+        return false;
+    }
+
+    // Now make sure state is not too similar to the comparison values
+    robot_state::RobotState comp_state(*p_state);
+    for (int c = 0; c < comparison_values.size(); c++)
+    {
+        comp_state.setJointGroupPositions(p_jmg, comparison_values[c]);
+        // Calculate distance in joint space
+        double dist = p_state->distance(comp_state);
+        // ROS_INFO("Dist = %f", dist);
+        // If this is below our threshold distance for any comparison state
+        if (dist < IK_COMP_MIN_DIST)
+        {
+            return false;
+        }
+    }
+
+    // If we made it this far
+    return true;
 }
 
 void TrajectoryLibrary::generateTargets(const std::vector<rect_grid> grids)
