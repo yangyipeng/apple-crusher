@@ -127,6 +127,8 @@ class TrajectoryLibrary
 
     bool ikValidityCallback(robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals);
 
+    moveit_msgs::AttachedCollisionObject getAppleObjectMsg();
+
     // File write and read
     bool filewrite(const plan_group& p_group, const char* filename, bool debug);
     bool fileread(plan_group& p_group, const char* filename, bool debug);

@@ -536,6 +536,12 @@ void TrajectoryLibrary::build()
             p_group.end_group = j;
             p_group.plan_count = 0;
 
+            // If we are moving from place target to pick target, we need to attach an apple
+            if (i == PLACE_TARGET && j == PICK_TARGET)
+            {
+                // _plan_scene->processAttachedCollisionObjectMsg(getAppleObjectMsg());
+            }
+
             /* Pick particular start target */
             for (int n = 0; n < _target_groups[i].target_count; n++)
             {
@@ -544,7 +550,6 @@ void TrajectoryLibrary::build()
                 // Construct trajectory start state
                 robot_state::RobotState start_state(_rmodel);
                 start_state.setJointGroupPositions(UR5_GROUP_NAME, _target_groups[i].jvals[n]);
-                // TODO: Attach object if neccessary
 
                 // Update planning scene with start state
                 _plan_scene->setCurrentState(start_state);
