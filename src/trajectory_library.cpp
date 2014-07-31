@@ -229,7 +229,7 @@ bool TrajectoryLibrary::ikValidityCallback(robot_state::RobotState* p_state, con
 
 void TrajectoryLibrary::generateTargets(const std::vector<rect_grid> grids)
 {
-    target_volume vol;
+    target_group vol;
     for (int i = 0; i < grids.size(); i++)
     {
         ROS_INFO("Generating joint value targets for group %d.", i);
@@ -526,21 +526,25 @@ void TrajectoryLibrary::build()
         {
             if (j == i)
             {
-                // We don't want to generate paths between targets in the same group
-                continue;
+                if (!_target_groups[i].allow_internal_paths)
+                {
+                    // We don't want to generate paths between targets in the same group
+                    continue;
+                }
+                else
+                {
+                    ROS_INFO("INTERNAL");
+                }
             }
-            ROS_INFO("END GROUP: %d", j);
+            else
+            {
+                ROS_INFO("END GROUP: %d", j);
+            }
 
             plan_group p_group;
             p_group.start_group = i;
             p_group.end_group = j;
             p_group.plan_count = 0;
-
-            // If we are moving from place target to pick target, we need to attach an apple
-            if (i == PLACE_TARGET && j == PICK_TARGET)
-            {
-                // _plan_scene->processAttachedCollisionObjectMsg(getAppleObjectMsg());
-            }
 
             /* Pick particular start target */
             for (int n = 0; n < _target_groups[i].target_count; n++)

@@ -59,7 +59,8 @@ typedef struct {
     rect_grid grid;
     std::vector<joint_values_t> jvals;
     int target_count;
-} target_volume;
+    bool allow_internal_paths;
+} target_group;
 
 
 typedef struct {
@@ -89,7 +90,7 @@ class TrajectoryLibrary
 {
     // Target positions
     int _num_target_groups;
-    std::vector<target_volume> _target_groups;
+    std::vector<target_group> _target_groups;
 
     // Plans
     int _num_plan_groups;
