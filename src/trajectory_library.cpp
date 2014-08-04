@@ -539,7 +539,7 @@ void TrajectoryLibrary::build()
             // If we are moving from place target to pick target, we need to attach an apple
             if (i == PLACE_TARGET && j == PICK_TARGET)
             {
-                // _plan_scene->processAttachedCollisionObjectMsg(getAppleObjectMsg());
+                _plan_scene->processAttachedCollisionObjectMsg(getAppleObjectMsg());
             }
 
             /* Pick particular start target */
@@ -821,7 +821,11 @@ bool TrajectoryLibrary::filewrite(const plan_group &p_group, const char* filenam
         file.write((char *)(&node_count),sizeof(node_count));
         for (size_t idx = 0; idx < node_count; idx++)
         {
-            for (size_t i=0; i < 6; i++) file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.points[idx].positions[i]),sizeof(double));
+            for (size_t i=0; i < 6; i++)
+            {
+                file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.points[idx].positions[i]),sizeof(double));
+                file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.points[idx].velocities[i]),sizeof(double));
+            }
             file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.points[idx].time_from_start),sizeof(ros::Duration));
         }
 
@@ -918,6 +922,8 @@ bool TrajectoryLibrary::fileread(plan_group& p_group, const char* filename, bool
             {
                 info.read((char *)(&temp_double),sizeof(temp_double));
                 temp_points.positions.push_back(temp_double);
+                info.read((char *)(&temp_double),sizeof(temp_double));
+                temp_points.velocities.push_back(temp_double);
             }
             info.read((char *)(&temp_duration),sizeof(temp_duration));
             //ros::Duration d(z);
@@ -1048,4 +1054,26 @@ void TrajectoryLibrary::importFromFile(int num_plan_groups)
         }
     }
     return;
+}
+
+ moveit_msgs::AttachedCollisionObject TrajectoryLibrary::getAppleObjectMsg()
+{
+    moveit_msgs::AttachedCollisionObject apple;
+    apple.link_name = "ee_link";
+    apple.object.header.frame_id = "ee_link";
+    apple.object.id = "apple";
+
+    geometry_msgs::Pose pose;
+    shape_msgs::SolidPrimitive primitive;
+    pose.position.x = 0.05;
+    primitive.type = primitive.SPHERE;
+    primitive.dimensions.resize(1);
+    primitive.dimensions[0] = 0.05;
+
+    apple.object.primitives.push_back(primitive);
+    apple.object.primitive_poses.push_back(pose);
+    apple.object.operation = apple.object.ADD;
+    /* Publish and sleep (to view the visualized results)*/
+
+    return apple;
 }
