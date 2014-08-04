@@ -197,39 +197,80 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
                 geo_pose.position.y = grid.ylim_low + j*dj;
                 geo_pose.position.z = grid.zlim_low + k*dk;
                 geo_pose.orientation = grid.orientation;
+
+                // We want to generate a number of joint value targets for each geo pose
                 bool ik_success;
-                // Do IK
-                ik_success = state->setFromIK(_jmg, geo_pose, 10, 0.2, boost::bind(&TrajectoryLibrary::ikValidityCallback, this, _1, _2, _3));
-                if (!ik_success)
+                std::vector<joint_values_t> geo_jvals;
+                for (int tries = 0; tries < 10; tries++)
+                {
+                    // Do IK
+                    ik_success = state->setFromIK(_jmg, geo_pose, 10, 0.2, boost::bind(&TrajectoryLibrary::ikValidityCallback, this, geo_jvals, _1, _2, _3));
+                    if (!ik_success)
+                    {
+                        break;
+                    }
+
+                    // If IK succeeded
+                    joint_values_t j;
+                    state->copyJointGroupPositions(_jmg, j);
+                    // Add to vector
+                    geo_jvals.push_back(j);
+                    ROS_INFO("Successfully generated joint values for pose %d.", n);
+                }
+
+                // Now we push any values contained in geo_jvals into our jvals vector
+                for (int m = 0; m < geo_jvals.size(); m++)
+                {
+                    jvals.push_back(geo_jvals[m]);
+                }
+
+                // If we had none to push
+                if (geo_jvals.size() == 0)
                 {
                     ROS_WARN("Could not solve IK for pose %d: Skipping.", n);
                     printPose(geo_pose);
-                    continue;
                 }
-                // If IK succeeded
-                joint_values_t j;
-                state->copyJointGroupPositions(_jmg, j);
-                // Add to vector
-                ROS_INFO("Successfully generated joint values for pose %d.", n);
-                jvals.push_back(j);
             }
         }
     }
     return jvals.size();
 }
 
-bool TrajectoryLibrary::ikValidityCallback(robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals)
+bool TrajectoryLibrary::ikValidityCallback(const std::vector<joint_values_t>& comparison_values, robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals)
 {
-    // Check for collisions
-    //collision_world::ConstPtr world = plan_scene->getCollisionWorld();
+    // ROS_INFO("IK Validity checker...");
+    // Construct state from given joint values
     p_state->setJointGroupPositions(p_jmg, jvals);
     p_state->update(true);
-    return _plan_scene->isStateValid(*p_state, p_jmg->getName(), false);
+
+    // Check if state is valid
+    if (!_plan_scene->isStateValid(*p_state, p_jmg->getName(), false))
+    {
+        return false;
+    }
+
+    // Now make sure state is not too similar to the comparison values
+    robot_state::RobotState comp_state(*p_state);
+    for (int c = 0; c < comparison_values.size(); c++)
+    {
+        comp_state.setJointGroupPositions(p_jmg, comparison_values[c]);
+        // Calculate distance in joint space
+        double dist = p_state->distance(comp_state);
+        // ROS_INFO("Dist = %f", dist);
+        // If this is below our threshold distance for any comparison state
+        if (dist < IK_COMP_MIN_DIST)
+        {
+            return false;
+        }
+    }
+
+    // If we made it this far
+    return true;
 }
 
 void TrajectoryLibrary::generateTargets(const std::vector<rect_grid> grids)
 {
-    target_volume vol;
+    target_group vol;
     for (int i = 0; i < grids.size(); i++)
     {
         ROS_INFO("Generating joint value targets for group %d.", i);
@@ -376,64 +417,48 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
     std::size_t wpt_count = traj->getWayPointCount();
     ROS_INFO("Optimize starts with %d waypoints.", (int) wpt_count);
 
+    robot_trajectory::RobotTrajectory shortcut(_rmodel, UR5_GROUP_NAME);
+
     // Iterate forwards from the first waypoint
     for (std::size_t i=0; i < wpt_count; i++)
     {
         // Do time parameterization
         _time_parametizer->computeTimeStamps(*traj_opt);
 
-        // Check for shortcut to other waypoint
+        // Get shortcut start waypoint
+        robot_state::RobotState wpt_i = traj_opt->getWayPoint(i);
+
         // Starting from the end and going backwards
         for (std::size_t j=(wpt_count-1); j > i; j--)
         {
-            // Define shortcut as straight line in joint space between waypoints i and j
-            robot_state::RobotState wpt_i = traj_opt->getWayPoint(i);
+            // Get shortcut end waypoint
             robot_state::RobotState wpt_j = traj_opt->getWayPoint(j);
+            // Define shortcut as straight line in joint space between waypoints i and j
+            shortcut.clear();
+            shortcut.addSuffixWayPoint(wpt_i, 0);
+            shortcut.addSuffixWayPoint(wpt_j, traj_opt->getWayPointDurationFromPrevious(j));
 
-            // Generate intermediate states and check each for collisions
-            double duration = traj_opt->getWaypointDurationFromStart(j) - traj_opt->getWaypointDurationFromStart(i);
-            std::size_t step_count = duration / DT_LOCAL_COLLISION_CHECK;
-            double step_scaled;
-            robot_state::RobotState step_state(_rmodel);
-            bool shortcut_invalid = false;
-
-            for (std::size_t s=1; s < step_count; s++)
+            // Now check if shortcut is valid
+            if (_plan_scene->isPathValid(shortcut))
             {
-                step_scaled = s / ((float) step_count);
-                // Calculate intermediate state at step s
-                wpt_i.interpolate(wpt_j, step_scaled, step_state);
-                step_state.update(true);
-                // Check state for collision
-                if (!_plan_scene->isStateValid(step_state, UR5_GROUP_NAME) )
-                {
-                    // ROS_INFO("Collision found at %f of the way between waypoints %d and %d.", step_scaled, (int) i, (int) j);
-                    shortcut_invalid = true;
-                    break;
-                }
-            }
-
-            // If the shortcut is valid
-            if (!shortcut_invalid)
-            {
-                //ROS_INFO("Shortcut found between nodes %d and %d.", (int) i, (int) j);
+                ROS_INFO("Shortcut found between nodes %d and %d.", (int) i, (int) j);
                 // Create new trajectory object with only neccessary endpoints
-                robot_trajectory::RobotTrajectory temp_traj(_rmodel, UR5_GROUP_NAME);
                 // Copy in waypoints before the shortcut
-                for (std::size_t n=0; n <= i; n++)
+                for (std::size_t n=0; n < i; n++)
                 {
                     robot_state::RobotStatePtr state = traj_opt->getWayPointPtr(n);
-                    temp_traj.insertWayPoint(n, state, 0.0);
+                    shortcut.insertWayPoint(n, state, 0);
                 }
                 // Copy in waypoints after the shortcut
-                for (std::size_t n=j; n < wpt_count; n++)
+                for (std::size_t n=j+1; n < wpt_count; n++)
                 {
                     robot_state::RobotStatePtr state = traj_opt->getWayPointPtr(n);
-                    temp_traj.insertWayPoint(n - (j-i-1), state, 0.0);
+                    shortcut.insertWayPoint(n - (j-i-1), state, 0);
                 }
-                ROS_ASSERT(temp_traj.getWayPointCount() == (wpt_count - (j-i-1)));
+                ROS_ASSERT(shortcut.getWayPointCount() == (wpt_count - (j-i-1)));
 
                 // Copy temporary trajectory
-                *traj_opt = temp_traj;
+                *traj_opt = shortcut;
                 wpt_count = traj_opt->getWayPointCount();
                 break; // break out of j loop
             }
@@ -469,9 +494,9 @@ void TrajectoryLibrary::computeVelocities(robot_trajectory::RobotTrajectoryPtr t
             // Calculate joint velocity given desired duration
             double vel = joint_dist / duration;
             // Set joint velocity for waypoint
-            ROS_INFO("Waypoint %d joint %d with duration %f has velocity %f.", i, j, duration, wpt->getVariableVelocity(j));
+            // ROS_INFO("Waypoint %d joint %d with duration %f has velocity %f.", i, j, duration, wpt->getVariableVelocity(j));
             wpt->setVariableVelocity(j, vel);
-            ROS_INFO("Assigned waypoint %d joint %d with duration %f a velocity of %f.", i, j, duration, vel);
+            // ROS_INFO("Assigned waypoint %d joint %d with duration %f a velocity of %f.", i, j, duration, vel);
         }
     }
 
@@ -526,10 +551,20 @@ void TrajectoryLibrary::build()
         {
             if (j == i)
             {
-                // We don't want to generate paths between targets in the same group
-                continue;
+                if (!_target_groups[i].allow_internal_paths)
+                {
+                    // We don't want to generate paths between targets in the same group
+                    continue;
+                }
+                else
+                {
+                    ROS_INFO("INTERNAL");
+                }
             }
-            ROS_INFO("END GROUP: %d", j);
+            else
+            {
+                ROS_INFO("END GROUP: %d", j);
+            }
 
             plan_group p_group;
             p_group.start_group = i;

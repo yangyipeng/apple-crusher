@@ -34,9 +34,7 @@
 #define UR5_GROUP_NAME "manipulator"
 #define DT_LOCAL_COLLISION_CHECK 0.05
 
-#define WORKSPACE_BOUNDS_X 10.0
-#define WORKSPACE_BOUNDS_Y 10.0
-#define WORKSPACE_BOUNDS_Z 10.0
+#define IK_COMP_MIN_DIST 3.0
 
 typedef struct {
     double xlim_low;
@@ -59,7 +57,8 @@ typedef struct {
     rect_grid grid;
     std::vector<joint_values_t> jvals;
     int target_count;
-} target_volume;
+    bool allow_internal_paths;
+} target_group;
 
 
 typedef struct {
@@ -89,7 +88,7 @@ class TrajectoryLibrary
 {
     // Target positions
     int _num_target_groups;
-    std::vector<target_volume> _target_groups;
+    std::vector<target_group> _target_groups;
 
     // Plans
     int _num_plan_groups;
@@ -125,7 +124,7 @@ class TrajectoryLibrary
     moveit_msgs::Constraints genPoseConstraint(geometry_msgs::Pose pose_goal);
     moveit_msgs::Constraints genJointValueConstraint(joint_values_t jvals);
 
-    bool ikValidityCallback(robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals);
+    bool ikValidityCallback(const std::vector<joint_values_t>& comparison_values, robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals);
 
     moveit_msgs::AttachedCollisionObject getAppleObjectMsg();
 
