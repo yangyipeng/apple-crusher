@@ -1,6 +1,8 @@
 #ifndef TRAJECTORY_LIBRARY_H
 #define TRAJECTORY_LIBRARY_H
 
+#include "kd_tree.h"
+
 #include <pluginlib/class_loader.h>
 #include <ros/ros.h>
 #include <fstream>
@@ -51,26 +53,12 @@ typedef struct {
     geometry_msgs::Quaternion orientation;
 } rect_grid;
 
-typedef std::vector<double> joint_values_t;
-
 typedef struct {
     rect_grid grid;
     std::vector<joint_values_t> jvals;
     int target_count;
     bool allow_internal_paths;
 } target_group;
-
-
-typedef struct {
-    // We need both a moveit_msgs::RobotTrajectory and a valid RobotState
-    moveit_msgs::RobotTrajectory trajectory;
-    moveit_msgs::RobotState start_state;
-    moveit_msgs::RobotState end_state;
-    int start_target_index;
-    int end_target_index;
-    double duration; // seconds
-    int num_wpts;
-} ur5_motion_plan;
 
 typedef struct {
     int start_group;
