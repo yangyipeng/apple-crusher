@@ -104,6 +104,7 @@ catkin_package(
 ## Declare a cpp library
 add_library(tlib
    src/trajectory_library.cpp
+	 src/kd_tree.cpp
 )
 
 ## Declare a cpp executable
