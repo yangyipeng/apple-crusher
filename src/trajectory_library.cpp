@@ -749,14 +749,19 @@ void TrajectoryLibrary::demo()
 
         // Get trajectory data
         int num_wpts = plan->num_wpts;
-        if (_plan_scene->isPathValid(traj));
+        if (!_plan_scene->isPathValid(traj))
+        {
+            // Path invalid
+            ROS_ERROR("Path invalid. Will not execute.");
+            continue;
+        }
 
         double duration = traj.getWaypointDurationFromStart(num_wpts-1);
         if (duration - plan->duration > 0.05)
         {
             ROS_ERROR("Duration fields do not match. %f - %f = %f.", duration, plan->duration, duration-plan->duration);
         }
-        ROS_INFO("Trajectory has %d nodes and takes %f seconds.", num_wpts, duration);
+        ROS_INFO("Trajectory has %d nodes and takes %f seconds.", num_wpts, plan->duration);
 
         // Publish trajectory
         moveit_msgs::DisplayTrajectory display_trajectory;
@@ -891,6 +896,9 @@ bool TrajectoryLibrary::filewrite(const plan_group &p_group, const char* filenam
         file.write((char *)(&p_group.plans[n].start_target_index),sizeof(unsigned int));
         file.write((char *)(&p_group.plans[n].end_target_index),sizeof(unsigned int));
 
+        //duration
+        file.write((char *) &p_group.plans[n].duration, sizeof(ur5_motion_plan::duration));
+
         //write an apple
         file << "ee_link"  << '\n' << "apple" << '\n';
         file.write((char *)(&radius),sizeof(double));
@@ -1007,6 +1015,9 @@ bool TrajectoryLibrary::fileread(plan_group& p_group, const char* filename, bool
         //Index
         info.read((char *)(&ur5.start_target_index),sizeof(unsigned int));
         info.read((char *)(&ur5.end_target_index),sizeof(unsigned int));
+
+        // Duration
+        info.read((char*) &(ur5.duration), sizeof(ur5_motion_plan::duration));
 
         //read an apple
         /* Define the attached object message*/
