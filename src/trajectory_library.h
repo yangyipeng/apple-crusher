@@ -9,6 +9,7 @@
 #include <iostream>
 #include <vector>
 #include <string.h>
+#include <cmath>
 
 #include <eigen_conversions/eigen_msg.h>
 #include <geometric_shapes/shapes.h>
@@ -81,6 +82,9 @@ class TrajectoryLibrary
     // Plans
     int _num_plan_groups;
     std::vector<plan_group> _plan_groups;
+
+    // KD tree plan storage object
+    KDTreePtr _kdtree;
 
     // MoveIt variables
     robot_model_loader::RobotModelLoaderPtr _rmodel_loader;

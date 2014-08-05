@@ -41,6 +41,12 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle& nh)
     _num_plan_groups = 0;
     _num_target_groups = 0;
 
+    // Initialize KD Tree
+    std::vector<double> low_bounds(12,-M_PI-0.10);
+    std::vector<double> high_bounds(12, M_PI+0.10);
+    std::vector<std::size_t> res(12, 10);
+    _kdtree.reset(new KDTree(_rmodel, low_bounds, high_bounds, res));
+
     return;
 }
 
@@ -201,7 +207,7 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
                 // We want to generate a number of joint value targets for each geo pose
                 bool ik_success;
                 std::vector<joint_values_t> geo_jvals;
-                for (int tries = 0; tries < 10; tries++)
+                for (int tries = 0; tries < 1; tries++)
                 {
                     // Do IK
                     ik_success = state->setFromIK(_jmg, geo_pose, 10, 0.2, boost::bind(&TrajectoryLibrary::ikValidityCallback, this, geo_jvals, _1, _2, _3));
@@ -572,10 +578,17 @@ void TrajectoryLibrary::build()
             p_group.plan_count = 0;
 
             // If we are moving from place target to pick target, we need to attach an apple
+            moveit_msgs::AttachedCollisionObject aco_msg;
             if (i == PLACE_TARGET && j == PICK_TARGET)
             {
-                _plan_scene->processAttachedCollisionObjectMsg(getAppleObjectMsg());
+                aco_msg = getAppleObjectMsg();
             }
+            else
+            {
+                aco_msg = getAppleObjectMsg();
+                aco_msg.object.operation = aco_msg.object.REMOVE;
+            }
+            _plan_scene->processAttachedCollisionObjectMsg(getAppleObjectMsg());
 
             /* Pick particular start target */
             for (int n = 0; n < _target_groups[i].target_count; n++)
@@ -617,6 +630,13 @@ void TrajectoryLibrary::build()
                     // Store trajectory in plan group
                     p_group.plans.push_back(plan);
                     p_group.plan_count++;
+
+                    // Store trajectory in KD tree
+                    try { _kdtree->add(plan); }
+                    catch (std::string& s)
+                    {
+                        ROS_ERROR("KDTree::add() exception: %s.", s.c_str());
+                    }
                 }
             }
 
@@ -625,6 +645,8 @@ void TrajectoryLibrary::build()
             _num_plan_groups++;
         }
     }
+
+    _kdtree->printInfo(std::cout);
 
     return;
 }
@@ -651,9 +673,6 @@ void TrajectoryLibrary::demo()
 
     while (1)
     {
-        // Computation time
-        boost::posix_time::ptime compute_time_start = boost::posix_time::microsec_clock::universal_time();
-
         ///////////// Search randomly for next trajectory
         std::vector<bool> tried;
         tried.assign(_num_plan_groups, false);
@@ -715,6 +734,24 @@ void TrajectoryLibrary::demo()
         ROS_INFO("Moving from group %d target %d to group %d target %d.", _plan_groups[i].start_group, plan->start_target_index,
                  _plan_groups[i].end_group, plan->end_target_index);
 
+        ////// Do quick test of KDTree lookup
+        // Computation time
+        boost::posix_time::ptime compute_time_start = boost::posix_time::microsec_clock::universal_time();
+
+        ROS_INFO("Setting KDTree target.");
+        _kdtree->setTargets(plan->start_state.joint_state.position, plan->end_state.joint_state.position);
+        ROS_INFO("Looking up plans.");
+        ur5_motion_plan kd_plan;
+        _kdtree->lookup(kd_plan, 0);
+        if (kd_plan.duration == plan->duration)
+        {
+            ROS_INFO("KD Tree lookup succeeded.");
+        }
+
+        // Computation time
+        boost::posix_time::ptime compute_time_end = boost::posix_time::microsec_clock::universal_time();
+        ROS_INFO("KD lookup time: = %d usec.", (int) (compute_time_end - compute_time_start).total_microseconds());
+
         // Get RobotTrajectory object from msg
         robot_trajectory::RobotTrajectory traj(_rmodel, UR5_GROUP_NAME);
         traj.setRobotTrajectoryMsg(start_state, plan->trajectory);
@@ -727,10 +764,6 @@ void TrajectoryLibrary::demo()
         // Update previous end target data
         prev_end_group = _plan_groups[i].end_group;
         prev_end_target = plan->end_target_index;
-
-        // Computation time
-        boost::posix_time::ptime compute_time_end = boost::posix_time::microsec_clock::universal_time();
-        ROS_INFO("Computation time = %d usec.", (int) (compute_time_end - compute_time_start).total_microseconds());
 
         ////////////// Now demo the trajectory
 
@@ -786,9 +819,9 @@ void TrajectoryLibrary::demo()
         _execution_manager->pushAndExecute(plan->trajectory);
 
         // Now delay for duration of trajectory
-        ros::WallDuration sleep_time(duration);
+        ros::WallDuration sleep_time(plan->duration);
         sleep_time.sleep();
-        _execution_manager->waitForExecution();
+        // _execution_manager->waitForExecution();
     }
 
     return;
@@ -1063,6 +1096,12 @@ bool TrajectoryLibrary::fileread(plan_group& p_group, const char* filename, bool
         ur5.num_wpts = wpt_count;
 
         p_group.plans.push_back(ur5);
+        try { _kdtree->add(ur5); }
+        catch (std::string& s)
+        {
+            ROS_ERROR("Exception: %s.", s.c_str());
+        }
+
         ur5 = empty;
     }
 
