@@ -84,6 +84,7 @@ public:
     void setTargets(const joint_values_t& start_jvals, const joint_values_t& end_jvals);
     double lookup(ur5_motion_plan& plan, int hit);
 
+    void printInfo(std::ostream& cout);
 };
 
 typedef boost::shared_ptr<KDTree> KDTreePtr;

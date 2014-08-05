@@ -62,6 +62,19 @@ KDTree::KDTree(robot_model::RobotModelPtr& rmodel, const std::vector<double>& lo
     // Extract dimension from model
     // Represent start and end joint-space positions as single point (dim = 2*numJoints)
     _dimension = 2 * _rmodel->getVariableCount();
+    if (low_bounds.size() != _dimension)
+    {
+        throw std::string("Dimension mismatch.");
+    }
+    if (high_bounds.size() != _dimension)
+    {
+        throw std::string("Dimension mismatch.");
+    }
+    if (resolution.size() != _dimension)
+    {
+        throw std::string("Dimension mismatch.");
+    }
+
     _bounds_low = low_bounds;
     _bounds_high = high_bounds;
     _resolution = resolution;
@@ -75,6 +88,26 @@ KDTree::KDTree(robot_model::RobotModelPtr& rmodel, const std::vector<double>& lo
     _plan_count = 0;
     _cell_count = 0;
 
+    return;
+}
+
+void KDTree::printInfo(std::ostream &cout)
+{
+    cout << "KDTree: " << std::endl;
+    cout << "  Dimensions: " << _dimension << std::endl;
+    cout << "  Low bounds: ";
+    for (int i=0; i < _dimension; i++)
+    {
+        cout << _bounds_low[i] << ' ';
+    }
+    cout << "\n  High bounds: ";
+    for (int i=0; i < _dimension; i++)
+    {
+        cout << _bounds_high[i] << ' ';
+    }
+    cout << std::endl;
+    cout << "  Number of plans: " << _plan_count << std::endl;
+    cout << "  Number of populated cells: " << _cell_count << std::endl;
     return;
 }
 
@@ -96,6 +129,7 @@ void KDTree::searchCellsAtNextDistance()
 
     // Increment latest search depth counter
     _search_depth++;
+    std::cout << "Expanding search to level " << _search_depth << std::endl;
 
     // Search through our cell map for cells at the correct distance from target
     for (int c=0; c < _cell_count; c++)
@@ -117,18 +151,15 @@ void KDTree::searchCellsAtNextDistance()
 void KDTree::add(const ur5_motion_plan & plan)
 {
     // First make sure plan start state and end state are within range
-    for (int i=0; i < _dimension; i++)
+    for (int i=0; i < (_dimension/2); i++)
     {
         if (plan.start_state.joint_state.position[i] < _bounds_low[i] || plan.start_state.joint_state.position[i] > _bounds_high[i])
         {
-            throw "Plan start state out of bounds. Cannot add plan to KDTree.";
-            return;
+            throw std::string("Plan start state out of bounds. Cannot add plan to KDTree.");
         }
-
-        if (plan.end_state.joint_state.position[i] < _bounds_low[i] || plan.end_state.joint_state.position[i] > _bounds_high[i])
+        if (plan.end_state.joint_state.position[i] < _bounds_low[i + (_dimension/2)] || plan.end_state.joint_state.position[i] > _bounds_high[i + (_dimension/2)])
         {
-            throw "Plan end state out of bounds. Cannot add plan to KDTree.";
-            return;
+            throw std::string("Plan end state out of bounds. Cannot add plan to KDTree.");
         }
     }
 
@@ -192,7 +223,12 @@ void KDTree::setTargets(const joint_values_t &start_jvals, const joint_values_t 
     {
         if (_cells[i].getCoords() == _target_coords)
         {
-            linearSort(_cells[i].getValues());
+            int num_plans = _cells[i].getValues().size();
+            std::cout << "Coords match. Cell has " << num_plans << " plans." << std::endl;
+            if (num_plans > 0)
+            {
+                linearSort(_cells[i].getValues());
+            }
             break;
         }
     }
@@ -219,6 +255,20 @@ double KDTree::lookup(ur5_motion_plan& plan, int hit)
 
 void KDTree::linearSort(const std::vector<std::size_t>& plan_pool)
 {
+    int pool_size = plan_pool.size();
+
+    std::cout << "Performing linear sort on " << pool_size << " plans." << std::endl;
+
+    if (pool_size == 0)
+    {
+        return;
+    }
+    if (pool_size == 1)
+    {
+        _proximity_ordering.push_back(plan_pool[0]);
+        return;
+    }
+
     std::vector<std::size_t> index_vect;
     std::vector<double> d_vect;
     robot_state::RobotState target_start(_rmodel);
@@ -230,8 +280,8 @@ void KDTree::linearSort(const std::vector<std::size_t>& plan_pool)
 
     robot_state::RobotState state(_rmodel);
     double distance;
-    int pool_size;
 
+    std::cout << "Calculating distances." << std::endl;
     for (int i=0; i < pool_size; i++)
     {
         state.setVariablePositions(_plans[ plan_pool[i] ].start_state.joint_state.position);
@@ -240,19 +290,19 @@ void KDTree::linearSort(const std::vector<std::size_t>& plan_pool)
         state.setVariablePositions(_plans[ plan_pool[i] ].end_state.joint_state.position);
         distance += target_end.distance(state);
 
+        std::cout << distance << std::endl;
         index_vect.push_back(plan_pool[i]);
         d_vect.push_back(distance);
     }
 
     // Find 1st, then 2nd, then 3rd lowest distance, and so on
-    for (int i=0; i < pool_size; i++)
+    while (d_vect.size() > 0)
     {
-        int d_vect_size = d_vect.size();
         double min = 10000;
         std::size_t min_index = 0;
         int min_j = 0;
 
-        for (int j=0; j < d_vect_size; j++)
+        for (int j=0; j < d_vect.size(); j++)
         {
             if (d_vect[j] < min)
             {
@@ -265,6 +315,7 @@ void KDTree::linearSort(const std::vector<std::size_t>& plan_pool)
 
         // Now add to proximity queue
         _proximity_ordering.push_back(min_index);
+        std::cout << "Added " << min_index << " with distance of " << min << " to priority queue." << std::endl;
         // And remove entry from distance and index vectors
         std::vector<double>::iterator d_it = d_vect.begin() + min_j;
         std::vector<std::size_t>::iterator i_it = index_vect.begin() + min_j;
