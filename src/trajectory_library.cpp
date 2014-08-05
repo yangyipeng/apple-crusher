@@ -536,6 +536,47 @@ moveit_msgs::Constraints TrajectoryLibrary::genJointValueConstraint(joint_values
     return kinematic_constraints::constructGoalConstraints(state, _jmg, 0.01);
 }
 
+void TrajectoryLibrary::calculateGradients(double* gradient_array, robot_trajectory::RobotTrajectoryPtr traj)
+{
+    int num_wpts = traj->getWayPointCount();
+    int num_joints = _rmodel->getVariableCount();
+    double delta = 0.002;
+
+    _time_parametizer->computeTimeStamps(*traj);
+    double duration_old = traj->getWaypointDurationFromStart(num_wpts-1);
+    double duration_new;
+
+    robot_state::RobotState wpt(_rmodel);
+    double* gtstate;
+    // Loop through waypoints
+    for (int i=0; i < num_wpts; i++)
+    {
+        // Get waypoint
+        wpt = traj->getWayPoint(i);
+        // Get joint position pointer
+        gtstate = wpt.getVariablePositions();
+        // Loop through joints
+        for (int j=0; j < num_joints; j++)
+        {
+            // Perturb joint j by delta
+            gtstate[j] += delta;
+            wpt.update(true);
+
+            // Calculate new path duration
+            _time_parametizer->computeTimeStamps(*traj);
+            duration_new = traj->getWaypointDurationFromStart(num_wpts-1);
+
+            // Now calculate gradient
+            *(gradient_array + (i*num_joints) + j) = (duration_new - duration_old)/delta;
+
+            // Now reset joint j
+            gtstate[j] -= delta;
+        }
+    }
+
+    return;
+}
+
 void TrajectoryLibrary::build()
 {
     /* Check that target groups have been generated */

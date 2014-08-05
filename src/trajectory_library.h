@@ -83,7 +83,7 @@ class TrajectoryLibrary
     int _num_plan_groups;
     std::vector<plan_group> _plan_groups;
 
-    // KD tree plan storage object
+    // KD tree plan data structure
     KDTreePtr _kdtree;
 
     // MoveIt variables
@@ -103,12 +103,18 @@ class TrajectoryLibrary
     ros::Publisher _robot_state_publisher;
     ros::Publisher _collision_object_publisher;
 
-    // Private methods
-    std::size_t gridLinspace(std::vector<joint_values_t>& jvals, rect_grid& grid);
-    bool planTrajectory(ur5_motion_plan& plan, std::vector<moveit_msgs::Constraints> constraints);
+    // Gradient descent warp
+    void gradientDescentWarp(ur5_motion_plan& plan, const joint_values_t& jvals_start, const joint_values_t& jvals_end);
+    void calculateGradients(double* gradient_array, robot_trajectory::RobotTrajectoryPtr traj);
+
+    // Trajectory post-processing
     void optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr traj_opt, robot_trajectory::RobotTrajectoryPtr traj);
     void timeWarpTrajectory(robot_trajectory::RobotTrajectoryPtr traj, double slow_factor);
     void computeVelocities(robot_trajectory::RobotTrajectoryPtr traj);
+
+    // Private methods
+    std::size_t gridLinspace(std::vector<joint_values_t>& jvals, rect_grid& grid);
+    bool planTrajectory(ur5_motion_plan& plan, std::vector<moveit_msgs::Constraints> constraints);
 
     void printPose(const geometry_msgs::Pose& pose);
     void printJointValues(const joint_values_t& jvals);
