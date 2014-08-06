@@ -207,7 +207,7 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
                 // We want to generate a number of joint value targets for each geo pose
                 bool ik_success;
                 std::vector<joint_values_t> geo_jvals;
-                for (int tries = 0; tries < 1; tries++)
+                for (int tries = 0; tries < 3; tries++)
                 {
                     // Do IK
                     ik_success = state->setFromIK(_jmg, geo_pose, 10, 0.2, boost::bind(&TrajectoryLibrary::ikValidityCallback, this, geo_jvals, _1, _2, _3));
@@ -281,6 +281,7 @@ void TrajectoryLibrary::generateTargets(const std::vector<rect_grid> grids)
     {
         ROS_INFO("Generating joint value targets for group %d.", i);
         vol.grid = grids[i];
+        vol.allow_internal_paths = true;
         vol.target_count = gridLinspace(vol.jvals, vol.grid);
         ROS_INFO("Generated %d of %d possible targets.", vol.target_count, vol.grid.xres*vol.grid.yres*vol.grid.zres);
         _target_groups.push_back(vol);
@@ -321,7 +322,7 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
     //req.planner_id = "manipulator[LBKPIECEkConfigDefault]";
     req.planner_id = "manipulator[RRTConnectkConfigDefault]";
     //req.planner_id = "manipulator[RRTstarkConfigDefault]";
-    req.allowed_planning_time = 10.0;
+    req.allowed_planning_time = 5.0;
 
     // req.num_planning_attempts = 3;
 
@@ -369,8 +370,8 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
             robot_trajectory::RobotTrajectoryPtr traj_opt(new robot_trajectory::RobotTrajectory(_rmodel, UR5_GROUP_NAME));
             optimizeTrajectory(traj_opt, traj);
 
-            // Now slow it down for safety
-            timeWarpTrajectory(traj_opt, 3);
+            // Do time parameterization on optimized trajectory
+            _time_parametizer->computeTimeStamps(*traj_opt);
 
             // Now generate velocities
             computeVelocities(traj);
@@ -428,9 +429,6 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
     // Iterate forwards from the first waypoint
     for (std::size_t i=0; i < wpt_count; i++)
     {
-        // Do time parameterization
-        _time_parametizer->computeTimeStamps(*traj_opt);
-
         // Get shortcut start waypoint
         robot_state::RobotState wpt_i = traj_opt->getWayPoint(i);
 
@@ -441,11 +439,11 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
             robot_state::RobotState wpt_j = traj_opt->getWayPoint(j);
             // Define shortcut as straight line in joint space between waypoints i and j
             shortcut.clear();
-            shortcut.addSuffixWayPoint(wpt_i, 0);
-            shortcut.addSuffixWayPoint(wpt_j, traj_opt->getWayPointDurationFromPrevious(j));
+            shortcut.insertWayPoint(0, wpt_i, 0.0);
+            shortcut.insertWayPoint(1, wpt_j, 0.0);
 
             // Now check if shortcut is valid
-            if (_plan_scene->isPathValid(shortcut))
+            if (_plan_scene->isPathValid(shortcut, UR5_GROUP_NAME))
             {
                 ROS_INFO("Shortcut found between nodes %d and %d.", (int) i, (int) j);
                 // Create new trajectory object with only neccessary endpoints
@@ -472,9 +470,6 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
             // Otherwise shortcut is invalid, so move on
         }
     }
-
-    // Do time parameterization again
-    _time_parametizer->computeTimeStamps(*traj_opt);
 
     ROS_INFO("Successfully trimmed %d nodes.", (int) (traj->getWayPointCount() - traj_opt->getWayPointCount()) );
     return;
@@ -829,7 +824,7 @@ void TrajectoryLibrary::demo()
 
         // Get trajectory data
         int num_wpts = plan->num_wpts;
-        if (!_plan_scene->isPathValid(traj))
+        if (!_plan_scene->isPathValid(traj, UR5_GROUP_NAME))
         {
             // Path invalid
             ROS_ERROR("Path invalid. Will not execute.");
