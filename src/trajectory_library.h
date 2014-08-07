@@ -67,13 +67,6 @@ typedef struct {
     int target_count;
 } target_group;
 
-typedef struct {
-    int start_group;
-    int end_group;
-    std::vector<ur5_motion_plan> plans;
-    int plan_count;
-} plan_group;
-
 enum target_groups {
     PICK_TARGET,
     PLACE_TARGET
@@ -84,10 +77,6 @@ class TrajectoryLibrary
     // Target positions
     int _num_target_groups;
     std::vector<target_group> _target_groups;
-
-    // Plans
-    int _num_plan_groups;
-    std::vector<plan_group> _plan_groups;
 
     // KD tree plan data structure
     KDTreePtr _kdtree;
@@ -144,11 +133,10 @@ public:
     void build();
     void demo();
 
-    bool fetchPlan(ur5_motion_plan &plan, int start_group, int start_index, int end_group, int end_index);
     void fitPlan(ur5_motion_plan& plan, const joint_values_t &start_jvals, const joint_values_t &end_jvals);
 
     void exportToFile();
-    void importFromFile(int num_plan_groups);
+    void importFromFile();
 };
 
 #endif // TRAJECTORY_LIBRARY_H

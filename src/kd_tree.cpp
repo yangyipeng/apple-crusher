@@ -114,7 +114,12 @@ void KDTree::printInfo(std::ostream &cout)
 cell_coords_t KDTree::calcCoords(const joint_values_t &jvals)
 {
     cell_coords_t coords;
-    for (int i = 0; i < _dimension; i++)
+    if (jvals.size() > _dimension)
+    {
+        throw "Cannot calculate cell coordinates of joint value list with size higher than _dimension.";
+    }
+
+    for (int i = 0; i < jvals.size(); i++)
     {
         double f_index = floor( (jvals[i] - _bounds_low[i]) / _cell_increments[i] );
         coords.push_back((coord_t) f_index);
@@ -222,15 +227,14 @@ const ur5_motion_plan& KDTree::getRandomPlanStartingNear(const moveit_msgs::Robo
     moveit::core::robotStateMsgToRobotState(start_state, comp_state);
 
     // Now search for cells in this subspace
-    while (1)
+    for (int j=0; j < _cell_count; j++)
     {
-        std::size_t cell_idx = rand() % _cell_count;
-        cell_coords_t cell_start_coords = _cells[cell_idx].getCoords();
+        cell_coords_t cell_start_coords = _cells[j].getCoords();
         cell_start_coords.resize(start_coords.size());
 
         if (cell_start_coords == start_coords)
         {
-            std::vector<std::size_t> values = _cells[cell_idx].getValues();
+            const std::vector<std::size_t>& values = _cells[j].getValues();
             for (int i = 0; i < values.size(); i++)
             {
                 const ur5_motion_plan& plan = _plans[ values[i] ];
@@ -239,11 +243,14 @@ const ur5_motion_plan& KDTree::getRandomPlanStartingNear(const moveit_msgs::Robo
 
                 if (dist < dist_max)
                 {
+                    std::cout << "Found plan distance " << dist << " away.\n";
                     return plan;
                 }
             }
         }
     }
+
+    throw "Could not find plan nearby.";
 }
 
 void KDTree::setTargets(const joint_values_t &start_jvals, const joint_values_t &end_jvals)
@@ -333,7 +340,7 @@ void KDTree::linearSort(const std::vector<std::size_t>& plan_pool)
         state.setVariablePositions(_plans[ plan_pool[i] ].end_state.joint_state.position);
         distance += target_end.distance(state);
 
-        std::cout << distance << std::endl;
+        // std::cout << distance << std::endl;
         index_vect.push_back(plan_pool[i]);
         d_vect.push_back(distance);
     }
