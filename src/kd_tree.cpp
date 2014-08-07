@@ -203,6 +203,49 @@ void KDTree::add(const ur5_motion_plan & plan)
     return;
 }
 
+const ur5_motion_plan& KDTree::getRandomPlan()
+{
+    // Get random plan
+    std::size_t plan_idx = rand() % _plans.size();
+
+    return _plans[plan_idx];
+}
+
+const ur5_motion_plan& KDTree::getRandomPlanStartingNear(const moveit_msgs::RobotState& start_state, double dist_max)
+{
+    // First calculate cell subspace with this starting location
+    cell_coords_t start_coords = calcCoords(start_state.joint_state.position);
+    // This only includes the start state -- i.e. we have a 6 dimensional subspace to search still
+
+    robot_state::RobotState state(_rmodel);
+    robot_state::RobotState comp_state(_rmodel);
+    moveit::core::robotStateMsgToRobotState(start_state, comp_state);
+
+    // Now search for cells in this subspace
+    while (1)
+    {
+        std::size_t cell_idx = rand() % _cell_count;
+        cell_coords_t cell_start_coords = _cells[cell_idx].getCoords();
+        cell_start_coords.resize(start_coords.size());
+
+        if (cell_start_coords == start_coords)
+        {
+            std::vector<std::size_t> values = _cells[cell_idx].getValues();
+            for (int i = 0; i < values.size(); i++)
+            {
+                const ur5_motion_plan& plan = _plans[ values[i] ];
+                moveit::core::robotStateMsgToRobotState(plan.start_state, state);
+                double dist = comp_state.distance(state);
+
+                if (dist < dist_max)
+                {
+                    return plan;
+                }
+            }
+        }
+    }
+}
+
 void KDTree::setTargets(const joint_values_t &start_jvals, const joint_values_t &end_jvals)
 {
     _target_point.reserve(2 * start_jvals.size());

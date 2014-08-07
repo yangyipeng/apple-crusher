@@ -3,6 +3,7 @@
 
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/robot_state/robot_state.h>
+#include <moveit/robot_state/conversions.h>
 
 #include <moveit_msgs/RobotState.h>
 #include <moveit_msgs/RobotTrajectory.h>
@@ -35,7 +36,8 @@ protected:
 public:
     Cell(const std::vector<std::size_t>& coords);
 
-    inline const std::vector<std::size_t>& getCoords() { return _coords; }
+    inline const cell_coords_t& getCoords() { return _coords; }
+    inline cell_coords_t getCoordsCopy() { return _coords; }
     inline const std::vector<std::size_t>& getValues() { return _values; }
 
     std::size_t rectDistFrom(const cell_coords_t &coords);
@@ -80,6 +82,11 @@ public:
     KDTree(robot_model::RobotModelPtr& rmodel, const std::vector<double>& low_bounds, const std::vector<double>& high_bounds, const std::vector<std::size_t>& resolution);
 
     void add(const ur5_motion_plan &plan);
+    inline const std::vector<ur5_motion_plan>& getPlanData() { return _plans; }
+    inline std::size_t getPlanCount() { return _plans.size(); }
+
+    const ur5_motion_plan& getRandomPlan();
+    const ur5_motion_plan& getRandomPlanStartingNear(const moveit_msgs::RobotState& start_state, double dist_max);
 
     void setTargets(const joint_values_t& start_jvals, const joint_values_t& end_jvals);
     double lookup(ur5_motion_plan& plan, int hit);
