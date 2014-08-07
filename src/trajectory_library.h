@@ -36,6 +36,8 @@
 
 #define UR5_GROUP_NAME "manipulator"
 #define DT_LOCAL_COLLISION_CHECK 0.05
+#define MAX_IK_SOLUTIONS 1
+#define MAX_PLANNER_ATTEMPTS 2
 
 #define IK_COMP_MIN_DIST 3.0
 
@@ -56,9 +58,13 @@ typedef struct {
 
 typedef struct {
     rect_grid grid;
+    bool allow_internal_paths;
+} target_volume;
+
+typedef struct {
+    target_volume vol;
     std::vector<joint_values_t> jvals;
     int target_count;
-    bool allow_internal_paths;
 } target_group;
 
 typedef struct {
@@ -104,7 +110,7 @@ class TrajectoryLibrary
     ros::Publisher _collision_object_publisher;
 
     // Gradient descent warp
-    void gradientDescentWarp(ur5_motion_plan& plan, const joint_values_t& jvals_start, const joint_values_t& jvals_end);
+    bool gradientDescentWarp(ur5_motion_plan& plan, const joint_values_t& jvals_start, const joint_values_t& jvals_end);
     void calculateGradients(double* gradient_array, robot_trajectory::RobotTrajectoryPtr traj);
 
     // Trajectory post-processing
@@ -127,18 +133,19 @@ class TrajectoryLibrary
     moveit_msgs::AttachedCollisionObject getAppleObjectMsg();
 
     // File write and read
-    bool filewrite(const plan_group& p_group, const char* filename, bool debug);
-    bool fileread(plan_group& p_group, const char* filename, bool debug);
+    bool filewrite(const std::vector<ur5_motion_plan> &plans, const char* filename, bool debug);
+    bool fileread(std::vector<ur5_motion_plan>& plans, const char* filename, bool debug);
 
 public:
     TrajectoryLibrary(ros::NodeHandle& nh);
 
     void initWorld();
-    void generateTargets(const std::vector<rect_grid> grids);
+    void generateTargets(const std::vector<target_volume> & vols);
     void build();
     void demo();
 
     bool fetchPlan(ur5_motion_plan &plan, int start_group, int start_index, int end_group, int end_index);
+    void fitPlan(ur5_motion_plan& plan, const joint_values_t &start_jvals, const joint_values_t &end_jvals);
 
     void exportToFile();
     void importFromFile(int num_plan_groups);

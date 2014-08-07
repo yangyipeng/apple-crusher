@@ -25,13 +25,6 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle& nh)
     // Initialize time parameterizer
     _time_parametizer.reset(new trajectory_processing::IterativeParabolicTimeParameterization());
 
-    // Initialize trajectory manager
-    _execution_manager.reset(new trajectory_execution_manager::TrajectoryExecutionManager(_rmodel));
-    if (!_execution_manager->ensureActiveControllersForGroup(UR5_GROUP_NAME))
-    {
-        ROS_ERROR("Controllers for joint group are not active.");
-    }
-
     // Create publisher for rviz
     _trajectory_publisher = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, true);
     _plan_scene_publisher = nh.advertise<moveit_msgs::PlanningScene>("/move_group/monitored_planning_scene", 1, true);
@@ -44,7 +37,7 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle& nh)
     // Initialize KD Tree
     std::vector<double> low_bounds(12,-M_PI-0.10);
     std::vector<double> high_bounds(12, M_PI+0.10);
-    std::vector<std::size_t> res(12, 10);
+    std::vector<std::size_t> res(12, 20);
     _kdtree.reset(new KDTree(_rmodel, low_bounds, high_bounds, res));
 
     return;
@@ -58,102 +51,102 @@ void TrajectoryLibrary::initWorld()
     geometry_msgs::Pose pose;
 
     ///////////////// Define workspace bounds as set of 6 planes
-//    object_msg.header.frame_id = "world";
-//    object_msg.operation = object_msg.ADD;
+    object_msg.header.frame_id = "world";
+    object_msg.operation = object_msg.ADD;
 
-//    // Zlow plane
-//    object_msg.id = "zlow_plane";
-//    shape_msgs::Plane plane;
-//    pose.orientation.w = 1;
-//    pose.position.x = 0;
-//    pose.position.y = 0;
-//    pose.position.z = 0;
-//    //pose.position.z = 0.05;
-//    plane.coef[0] = 0;
-//    plane.coef[1] = 0;
-//    plane.coef[2] = 1;
-//    plane.coef[3] = 0;
-//    object_msg.planes.push_back(plane);
-//    object_msg.plane_poses.push_back(pose);
-//    _plan_scene->processCollisionObjectMsg(object_msg);
-//    _acm.setEntry("zlow_plane", "world", true);
-//    _acm.setEntry("zlow_plane", "base_link", true);
-//    _acm.setEntry("zlow_plane", "shoulder_link", true);
+    // Zlow plane
+    object_msg.id = "zlow_plane";
+    shape_msgs::Plane plane;
+    pose.orientation.w = 1;
+    pose.position.x = 0;
+    pose.position.y = 0;
+    pose.position.z = 0;
+    //pose.position.z = 0.05;
+    plane.coef[0] = 0;
+    plane.coef[1] = 0;
+    plane.coef[2] = 1;
+    plane.coef[3] = 0;
+    object_msg.planes.push_back(plane);
+    object_msg.plane_poses.push_back(pose);
+    _plan_scene->processCollisionObjectMsg(object_msg);
+    _acm.setEntry("zlow_plane", "world", true);
+    _acm.setEntry("zlow_plane", "base_link", true);
+    _acm.setEntry("zlow_plane", "shoulder_link", true);
 
-//    // Zhigh plane
-//    object_msg.id = "zhigh_plane";
-//    pose.position.z = 0.9;
-//    object_msg.planes[0] = plane;
-//    object_msg.plane_poses[0] = pose;
-//    _plan_scene->processCollisionObjectMsg(object_msg);
+    // Zhigh plane
+    object_msg.id = "zhigh_plane";
+    pose.position.z = 0.9;
+    object_msg.planes[0] = plane;
+    object_msg.plane_poses[0] = pose;
+    _plan_scene->processCollisionObjectMsg(object_msg);
 
-//    // Ylow plane
-//    object_msg.id = "ylow_plane";
-//    plane.coef[0] = 0;
-//    plane.coef[1] = 1;
-//    plane.coef[2] = 0;
-//    plane.coef[3] = 0;
-//    pose.position.x = 0;
-//    pose.position.y = -0.40;
-//    pose.position.z = 0;
-//    object_msg.planes[0] = plane;
-//    object_msg.plane_poses[0] = pose;
-//    _plan_scene->processCollisionObjectMsg(object_msg);
+    // Ylow plane
+    object_msg.id = "ylow_plane";
+    plane.coef[0] = 0;
+    plane.coef[1] = 1;
+    plane.coef[2] = 0;
+    plane.coef[3] = 0;
+    pose.position.x = 0;
+    pose.position.y = -0.40;
+    pose.position.z = 0;
+    object_msg.planes[0] = plane;
+    object_msg.plane_poses[0] = pose;
+    _plan_scene->processCollisionObjectMsg(object_msg);
 
-//    // Yhigh plane
-//    object_msg.id = "yhigh_plane";
-//    pose.position.y = 0.4;
-//    object_msg.planes[0] = plane;
-//    object_msg.plane_poses[0] = pose;
-//    _plan_scene->processCollisionObjectMsg(object_msg);
+    // Yhigh plane
+    object_msg.id = "yhigh_plane";
+    pose.position.y = 0.4;
+    object_msg.planes[0] = plane;
+    object_msg.plane_poses[0] = pose;
+    _plan_scene->processCollisionObjectMsg(object_msg);
 
-//    // Xlow plane
-//    object_msg.id = "xlow_plane";
-//    plane.coef[0] = 1;
-//    plane.coef[1] = 0;
-//    plane.coef[2] = 0;
-//    plane.coef[3] = 0;
-//    pose.position.x = -0.4;
-//    pose.position.y = 0;
-//    pose.position.z = 0;
-//    object_msg.planes[0] = plane;
-//    object_msg.plane_poses[0] = pose;
-//    _plan_scene->processCollisionObjectMsg(object_msg);
+    // Xlow plane
+    object_msg.id = "xlow_plane";
+    plane.coef[0] = 1;
+    plane.coef[1] = 0;
+    plane.coef[2] = 0;
+    plane.coef[3] = 0;
+    pose.position.x = -0.4;
+    pose.position.y = 0;
+    pose.position.z = 0;
+    object_msg.planes[0] = plane;
+    object_msg.plane_poses[0] = pose;
+    _plan_scene->processCollisionObjectMsg(object_msg);
 
-//    // Xhigh plane
-//    object_msg.id = "xhigh_plane";
-//    pose.position.x = 0.4;
-//    object_msg.planes[0] = plane;
-//    object_msg.plane_poses[0] = pose;
-//    _plan_scene->processCollisionObjectMsg(object_msg);
+    // Xhigh plane
+    object_msg.id = "xhigh_plane";
+    pose.position.x = 0.4;
+    object_msg.planes[0] = plane;
+    object_msg.plane_poses[0] = pose;
+    _plan_scene->processCollisionObjectMsg(object_msg);
 
     /////////////////// Obstructo sphere
-//    // Publish object
-//    shape_msgs::SolidPrimitive primitive;
-//    primitive.type = primitive.BOX;
-//    primitive.dimensions.resize(3);
-//    primitive.dimensions[0] = 0.2;
-//    primitive.dimensions[1] = 0.1;
-//    primitive.dimensions[2] = 0.2;
-//    pose.orientation.w = 1;
-//    pose.orientation.x = 0;
-//    pose.orientation.y = 0;
-//    pose.orientation.z = 0;
-//    pose.position.x = 0;
-//    pose.position.y = 0;
-//    pose.position.z = 0.7;
-//    object_msg.id = "obstructo_sphere";
-//    object_msg.header.frame_id = "world";
-//    object_msg.primitives.clear();
-//    object_msg.primitives.push_back(primitive);
-//    object_msg.primitive_poses.clear();
-//    object_msg.primitive_poses.push_back(pose);
-//    object_msg.operation = object_msg.ADD;
-//    _plan_scene->processCollisionObjectMsg(object_msg);
+    // Publish object
+    shape_msgs::SolidPrimitive primitive;
+    primitive.type = primitive.BOX;
+    primitive.dimensions.resize(3);
+    primitive.dimensions[0] = 0.2;
+    primitive.dimensions[1] = 0.1;
+    primitive.dimensions[2] = 0.2;
+    pose.orientation.w = 1;
+    pose.orientation.x = 0;
+    pose.orientation.y = 0;
+    pose.orientation.z = 0;
+    pose.position.x = 0;
+    pose.position.y = 0;
+    pose.position.z = 0.9;
+    object_msg.id = "obstructo_sphere";
+    object_msg.header.frame_id = "world";
+    object_msg.primitives.clear();
+    object_msg.primitives.push_back(primitive);
+    object_msg.primitive_poses.clear();
+    object_msg.primitive_poses.push_back(pose);
+    object_msg.operation = object_msg.ADD;
+    _plan_scene->processCollisionObjectMsg(object_msg);
 
-//    _acm.setEntry("obstructo_sphere", "world", true);
-//    _acm.setEntry("obstructo_sphere", "base_link", true);
-//    _acm.setEntry("obstructo_sphere", "shoulder_link", true);
+    _acm.setEntry("obstructo_sphere", "world", true);
+    _acm.setEntry("obstructo_sphere", "base_link", true);
+    _acm.setEntry("obstructo_sphere", "shoulder_link", true);
 
     // Publish updated planning scene
     moveit_msgs::PlanningScene scene_msg;
@@ -207,7 +200,7 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
                 // We want to generate a number of joint value targets for each geo pose
                 bool ik_success;
                 std::vector<joint_values_t> geo_jvals;
-                for (int tries = 0; tries < 3; tries++)
+                for (int tries = 0; tries < MAX_IK_SOLUTIONS; tries++)
                 {
                     // Do IK
                     ik_success = state->setFromIK(_jmg, geo_pose, 10, 0.2, boost::bind(&TrajectoryLibrary::ikValidityCallback, this, geo_jvals, _1, _2, _3));
@@ -274,20 +267,19 @@ bool TrajectoryLibrary::ikValidityCallback(const std::vector<joint_values_t>& co
     return true;
 }
 
-void TrajectoryLibrary::generateTargets(const std::vector<rect_grid> grids)
+void TrajectoryLibrary::generateTargets(const std::vector<target_volume>& vols)
 {
-    target_group vol;
-    for (int i = 0; i < grids.size(); i++)
+    target_group t_group;
+    for (int i = 0; i < vols.size(); i++)
     {
         ROS_INFO("Generating joint value targets for group %d.", i);
-        vol.grid = grids[i];
-        vol.allow_internal_paths = true;
-        vol.target_count = gridLinspace(vol.jvals, vol.grid);
-        ROS_INFO("Generated %d of %d possible targets.", vol.target_count, vol.grid.xres*vol.grid.yres*vol.grid.zres);
-        _target_groups.push_back(vol);
+        t_group.vol = vols[i];
+        t_group.target_count = gridLinspace(t_group.jvals, t_group.vol.grid);
+        ROS_INFO("Generated %d of %d possible targets.", t_group.target_count, t_group.vol.grid.xres*t_group.vol.grid.yres*t_group.vol.grid.zres*MAX_IK_SOLUTIONS);
+        _target_groups.push_back(t_group);
     }
 
-    _num_target_groups = grids.size();
+    _num_target_groups += vols.size();
     return;
 }
 
@@ -324,7 +316,7 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
     //req.planner_id = "manipulator[RRTstarkConfigDefault]";
     req.allowed_planning_time = 5.0;
 
-    // req.num_planning_attempts = 3;
+    req.num_planning_attempts = 1;
 
 
     // Define workspace
@@ -338,7 +330,7 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
 
     // Now prepare the planning context
     int tries = 0;
-    while (tries < 3)
+    while (tries < MAX_PLANNER_ATTEMPTS)
     {
         _planning_pipeline->generatePlan(_plan_scene, req, res);
         if (res.error_code_.val == res.error_code_.SUCCESS)
@@ -537,25 +529,24 @@ void TrajectoryLibrary::calculateGradients(double* gradient_array, robot_traject
     int num_joints = _rmodel->getVariableCount();
     double delta = 0.002;
 
-    _time_parametizer->computeTimeStamps(*traj);
     double duration_old = traj->getWaypointDurationFromStart(num_wpts-1);
     double duration_new;
 
-    robot_state::RobotState wpt(_rmodel);
+    robot_state::RobotStatePtr wpt;
     double* gtstate;
     // Loop through waypoints
     for (int i=0; i < num_wpts; i++)
     {
         // Get waypoint
-        wpt = traj->getWayPoint(i);
+        wpt = traj->getWayPointPtr(i);
         // Get joint position pointer
-        gtstate = wpt.getVariablePositions();
+        gtstate = wpt->getVariablePositions();
         // Loop through joints
         for (int j=0; j < num_joints; j++)
         {
             // Perturb joint j by delta
             gtstate[j] += delta;
-            wpt.update(true);
+            wpt->update(true);
 
             // Calculate new path duration
             _time_parametizer->computeTimeStamps(*traj);
@@ -569,6 +560,109 @@ void TrajectoryLibrary::calculateGradients(double* gradient_array, robot_traject
         }
     }
 
+    return;
+}
+
+bool TrajectoryLibrary::gradientDescentWarp(ur5_motion_plan &plan, const joint_values_t &jvals_start, const joint_values_t &jvals_end)
+{
+    // Intialize RobotTrajectory object
+    robot_trajectory::RobotTrajectoryPtr traj(new robot_trajectory::RobotTrajectory(_rmodel, UR5_GROUP_NAME));
+    robot_state::RobotState start_state(_rmodel);
+    moveit::core::robotStateMsgToRobotState(plan.start_state, start_state);
+    traj->setRobotTrajectoryMsg(start_state, plan.trajectory);
+
+    // Collect useful data
+    int num_wpts = traj->getWayPointCount();
+    int num_joints = _rmodel->getVariableCount();
+
+    // Now replace start and end points to target start and end
+    robot_state::RobotStatePtr wpt_start = traj->getFirstWayPointPtr();
+    robot_state::RobotStatePtr wpt_end = traj->getLastWayPointPtr();
+    wpt_start->setVariablePositions(jvals_start);
+    wpt_start->update(true);
+    wpt_end->setVariablePositions(jvals_end);
+    wpt_end->update(true);
+
+    // If path invalid
+    if (!_plan_scene->isPathValid(*traj, UR5_GROUP_NAME))
+    {
+        ROS_WARN("Gradient descent failed.");
+        return false;
+    }
+
+    // Now do gradient descent to smooth the rest of the path
+    robot_trajectory::RobotTrajectoryPtr traj_temp(new robot_trajectory::RobotTrajectory(_rmodel, UR5_GROUP_NAME));
+    *traj_temp = *traj;
+    boost::shared_ptr<double> gradient_field(new double[num_wpts*num_joints]);
+    robot_state::RobotStatePtr wpt;
+    double* gtstate;
+
+    // Compute path duration
+    _time_parametizer->computeTimeStamps(*traj_temp);
+    double old_duration;
+    double new_duration = traj_temp->getWaypointDurationFromStart(num_wpts-1);
+
+    do
+    {
+        // Update previous duration
+        old_duration = new_duration;
+
+        // Calculate gradients
+        calculateGradients(gradient_field.get(), traj_temp);
+
+        // For each waypoint besides the start and end
+        for (int i=1; i < num_wpts-1; i++)
+        {
+            wpt = traj_temp->getWayPointPtr(i);
+            gtstate = wpt->getVariablePositions();
+
+            // For each joint
+            for (int j=0; j < num_joints; j++)
+            {
+                // Move joint according to negative gradient
+                gtstate[j] += -(gradient_field.get())[ (i*num_joints) + j ];
+            }
+        }
+
+        // Make sure path is valid
+        if (!_plan_scene->isPathValid(*traj_temp, UR5_GROUP_NAME))
+        {
+            break;
+        }
+
+        // Compute path duration
+        _time_parametizer->computeTimeStamps(*traj_temp);
+        new_duration = traj_temp->getWaypointDurationFromStart(num_wpts-1);
+
+        // Update trajectory
+        *traj = *traj_temp;
+
+    } while (old_duration - new_duration > 0.1);
+
+    // Now we have smoothed and fitted path
+    traj->getRobotTrajectoryMsg(plan.trajectory);
+    plan.duration = new_duration;
+    plan.num_wpts = num_wpts;
+    moveit::core::robotStateToRobotStateMsg(*wpt_start, plan.start_state);
+    moveit::core::robotStateToRobotStateMsg(*wpt_end, plan.end_state);
+
+    return true;
+}
+
+void TrajectoryLibrary::fitPlan(ur5_motion_plan& plan, const joint_values_t &start_jvals, const joint_values_t &end_jvals)
+{
+    // First find similar plan in database
+    _kdtree->setTargets(start_jvals, end_jvals);
+    bool success;
+    int proximity_index = 0;
+    do
+    {
+        std::cout << "Looking up plan at position " << proximity_index << " in priority queue." << std::endl;
+        _kdtree->lookup(plan, proximity_index);
+        success = gradientDescentWarp(plan, start_jvals, end_jvals);
+    } while (!success);
+
+    std::cout << "Found plan.\n";
     return;
 }
 
@@ -593,7 +687,7 @@ void TrajectoryLibrary::build()
         {
             if (j == i)
             {
-                if (!_target_groups[i].allow_internal_paths)
+                if (!_target_groups[i].vol.allow_internal_paths)
                 {
                     // We don't want to generate paths between targets in the same group
                     continue;
@@ -689,6 +783,13 @@ void TrajectoryLibrary::build()
 
 void TrajectoryLibrary::demo()
 {
+    // Initialize trajectory manager
+    _execution_manager.reset(new trajectory_execution_manager::TrajectoryExecutionManager(_rmodel));
+    if (!_execution_manager->ensureActiveControllersForGroup(UR5_GROUP_NAME))
+    {
+        ROS_ERROR("Controllers for joint group are not active.");
+    }
+
     srand(0);
 
     // Pick random trajectory to base our first search off of
@@ -767,22 +868,38 @@ void TrajectoryLibrary::demo()
         // Use i and n to assign plan
         plan = _plan_groups[i].plans.data() + n;
 
-        ROS_INFO("Moving from group %d target %d to group %d target %d.", _plan_groups[i].start_group, plan->start_target_index,
+        ROS_INFO("Moving from near group %d target %d to near group %d target %d.", _plan_groups[i].start_group, plan->start_target_index,
                  _plan_groups[i].end_group, plan->end_target_index);
 
-        ////// Do quick test of KDTree lookup
+        // Update start state
+        start_state = end_state;
+
+        // Extract end state
+        moveit::core::robotStateMsgToRobotState(plan->end_state, end_state);
+        if (!_plan_scene->isStateValid(end_state, UR5_GROUP_NAME, true))
+        {
+            ROS_ERROR("Original end target is not valid. Planning scene environment must have changed since library was built.");
+        }
+
+        ////// Generate randomized goal target near our fetched trajectory
+        double dist = 0.5;
+        do
+        {
+            dist = dist*0.8;
+            end_state.setToRandomPositionsNearBy(_jmg, end_state, dist);
+            end_state.update(true);
+        } while (!_plan_scene->isStateValid(end_state, UR5_GROUP_NAME, false));
+        std::cout << "dist = " << dist << std::endl;
+
         // Computation time
         boost::posix_time::ptime compute_time_start = boost::posix_time::microsec_clock::universal_time();
 
-        ROS_INFO("Setting KDTree target.");
-        _kdtree->setTargets(plan->start_state.joint_state.position, plan->end_state.joint_state.position);
-        ROS_INFO("Looking up plans.");
-        ur5_motion_plan kd_plan;
-        _kdtree->lookup(kd_plan, 0);
-        if (kd_plan.duration == plan->duration)
-        {
-            ROS_INFO("KD Tree lookup succeeded.");
-        }
+        ROS_INFO("Running gradient fit.");
+        joint_values_t start_jvals;
+        joint_values_t end_jvals;
+        start_state.copyJointGroupPositions(_jmg, start_jvals);
+        end_state.copyJointGroupPositions(_jmg, end_jvals);
+        fitPlan(*plan, start_jvals, end_jvals);
 
         // Computation time
         boost::posix_time::ptime compute_time_end = boost::posix_time::microsec_clock::universal_time();
@@ -802,14 +919,6 @@ void TrajectoryLibrary::demo()
         prev_end_target = plan->end_target_index;
 
         ////////////// Now demo the trajectory
-
-        // Extract start state
-        moveit::core::robotStateMsgToRobotState(plan->start_state, start_state);
-        ROS_INFO("Distance between start state and previous end state is %f.", start_state.distance(end_state));
-
-        // Extract end state
-        moveit::core::robotStateMsgToRobotState(plan->end_state, end_state);
-
         // Set current start state
         _plan_scene->setCurrentState(start_state);
 
@@ -917,70 +1026,76 @@ bool TrajectoryLibrary::filewrite(const plan_group &p_group, const char* filenam
     }
 
     // First write plan_group meta info
-    file.write((char *) &p_group.start_group, sizeof(p_group.start_group)); // start target group
-    file.write((char *) &p_group.end_group, sizeof(p_group.end_group));     // end target group
     file.write((char *)(&plan_count),sizeof(plan_count));                   // number of plans
 
     if (debug == 1) ROS_INFO("%d",plan_count);
     for (size_t n = 0; n < plan_count; n++)
     {
+        const ur5_motion_plan& plan = plans[n];
+
         //RobotTrajectory -> JointTrajectory -> JointTrajectoryPoints
-        node_count = p_group.plans[n].trajectory.joint_trajectory.points.size();
+        node_count = plan.trajectory.joint_trajectory.points.size();
         ROS_INFO("%d",node_count);
         file.write((char *)(&node_count),sizeof(node_count));
         for (size_t idx = 0; idx < node_count; idx++)
         {
             for (size_t i=0; i < 6; i++)
             {
-                file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.points[idx].positions[i]),sizeof(double));
-                file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.points[idx].velocities[i]),sizeof(double));
+                file.write((char *)(&plan.trajectory.joint_trajectory.points[idx].positions[i]),sizeof(double));
+                file.write((char *)(&plan.trajectory.joint_trajectory.points[idx].velocities[i]),sizeof(double));
             }
-            file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.points[idx].time_from_start),sizeof(ros::Duration));
+            file.write((char *)(&plan.trajectory.joint_trajectory.points[idx].time_from_start),sizeof(ros::Duration));
         }
 
         //RobotTrajectory -> JointTrajectory -> Header
-        file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.header.seq),sizeof(uint32_t));
-        file.write((char *)(&p_group.plans[n].trajectory.joint_trajectory.header.stamp),sizeof(ros::Time));
-        file << p_group.plans[n].trajectory.joint_trajectory.header.frame_id << '\n';
+        file.write((char *)(&plan.trajectory.joint_trajectory.header.seq),sizeof(uint32_t));
+        file.write((char *)(&plan.trajectory.joint_trajectory.header.stamp),sizeof(ros::Time));
+        file << plan.trajectory.joint_trajectory.header.frame_id << '\n';
 
         //RobotTrajectory -> JointTrajectory -> joint_names
-        for (size_t i=0; i < 6; i++) file << p_group.plans[n].trajectory.joint_trajectory.joint_names[i] << '\n';
+        for (size_t i=0; i < 6; i++) file << plan.trajectory.joint_trajectory.joint_names[i] << '\n';
 
 
         //start_state
         //RobotState -> JointState -> Header
-        file.write((char *)(&p_group.plans[n].start_state.joint_state.header.seq),sizeof(uint32_t));
-        file.write((char *)(&p_group.plans[n].start_state.joint_state.header.stamp),sizeof(ros::Time));
-        file << p_group.plans[n].start_state.joint_state.header.frame_id << '\n';
-        //RobotState -> JointState -> stirng & position
+        file.write((char *)(&plan.start_state.joint_state.header.seq),sizeof(uint32_t));
+        file.write((char *)(&plan.start_state.joint_state.header.stamp),sizeof(ros::Time));
+        file << plan.start_state.joint_state.header.frame_id << '\n';
+        //RobotState -> JointState -> string & position
         for (size_t j = 0; j < 6; j++)
         {
-            file << p_group.plans[n].start_state.joint_state.name[j] << '\n';
-            file.write((char *)(&p_group.plans[n].start_state.joint_state.position[j]),sizeof(double));
+            file << plan.start_state.joint_state.name[j] << '\n';
+            file.write((char *)(&plan.start_state.joint_state.position[j]),sizeof(double));
         }
 
         //end_state
         //RobotState -> JointState -> Header
-        file.write((char *)(&p_group.plans[n].end_state.joint_state.header.seq),sizeof(uint32_t));
-        file.write((char *)(&p_group.plans[n].end_state.joint_state.header.stamp),sizeof(ros::Time));
-        file << p_group.plans[n].end_state.joint_state.header.frame_id << '\n';
+        file.write((char *)(&plan.end_state.joint_state.header.seq),sizeof(uint32_t));
+        file.write((char *)(&plan.end_state.joint_state.header.stamp),sizeof(ros::Time));
+        file << plan.end_state.joint_state.header.frame_id << '\n';
         //RobotState -> JointState -> stirng & position
         for (size_t j = 0; j < 6; j++)
         {
-            file << p_group.plans[n].end_state.joint_state.name[j] << '\n';
-            file.write((char *)(&p_group.plans[n].end_state.joint_state.position[j]),sizeof(double));
+            file << plan.end_state.joint_state.name[j] << '\n';
+            file.write((char *)(&plan.end_state.joint_state.position[j]),sizeof(double));
         }
 
         //index
-        file.write((char *)(&p_group.plans[n].start_target_index),sizeof(unsigned int));
-        file.write((char *)(&p_group.plans[n].end_target_index),sizeof(unsigned int));
+        file.write((char *)(&plan.start_target_index),sizeof(unsigned int));
+        file.write((char *)(&plan.end_target_index),sizeof(unsigned int));
 
         //duration
-        file.write((char *) &p_group.plans[n].duration, sizeof(ur5_motion_plan::duration));
+        file.write((char *) &plan.duration, sizeof(ur5_motion_plan::duration));
 
         //write an apple
-        file << "ee_link"  << '\n' << "apple" << '\n';
-        file.write((char *)(&radius),sizeof(double));
+        if (plan.start_state.attached_collision_objects.size() > 0)
+        {
+            file << "apple\n";
+        }
+        else
+        {
+            file << "no apple\n";
+        }
     }
 
     file.close();
@@ -988,7 +1103,7 @@ bool TrajectoryLibrary::filewrite(const plan_group &p_group, const char* filenam
     return true;
 }
 
-bool TrajectoryLibrary::fileread(plan_group& p_group, const char* filename, bool debug = false)
+bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan>& plans, const char* filename, bool debug = false)
 {
     int wpt_count;
     int plan_count;
@@ -997,11 +1112,9 @@ bool TrajectoryLibrary::fileread(plan_group& p_group, const char* filename, bool
     double temp_double;
     std::string temp_string;
     std::string blank_string;
-//    uint32_t temp_uint32;
-//    ros::Time temp_time;
     ros::Duration temp_duration;
 
-    ur5_motion_plan ur5;
+    ur5_motion_plan temp_plan;
     ur5_motion_plan empty;
     std::vector<int> temp;
     trajectory_msgs::JointTrajectoryPoint temp_points;
@@ -1028,7 +1141,7 @@ bool TrajectoryLibrary::fileread(plan_group& p_group, const char* filename, bool
         info.read((char*)(&wpt_count),sizeof(wpt_count));
         temp.push_back(wpt_count);
         if (debug == 1) ROS_INFO("%d",wpt_count);
-        for (size_t idx = 0; idx < wpt_count; idx++)
+        for (size_t wpt_idx = 0; wpt_idx < wpt_count; wpt_idx++)
         {
             for (size_t i=0; i<6; i++)
             {
@@ -1149,30 +1262,38 @@ bool TrajectoryLibrary::fileread(plan_group& p_group, const char* filename, bool
 
 void TrajectoryLibrary::exportToFile()
 {
-    // SAVE DATA TO .bin FILE
+    // SAVE DATA TO .dat FILE
     ROS_INFO("--------------SAVING!!!!-------------------");
-    for (int i = 0; i < _num_plan_groups; i++)
+    if ( filewrite(_kdtree->getPlanData(), "plan_lib.dat", false) )
     {
-        std::string filename = "plangroup" + boost::lexical_cast<std::string>(i) + ".bin";
-        filewrite(_plan_groups[i], filename.c_str(), false);
+        ROS_INFO("Trajectories written to file.");
+    }
+    else
+    {
+        ROS_ERROR("Trajectories not saved to file.");
     }
     return;
 }
 
 void TrajectoryLibrary::importFromFile(int num_plan_groups)
 {
-    _num_plan_groups = 0;
-    //LOAD DATA FROM .bin FILE
+    //LOAD DATA FROM .dat FILE
     ROS_INFO("--------------LOADING!!!!-------------------");
-    for (int i = 0; i < num_plan_groups; i++)
+    std::vector<ur5_motion_plan> plans;
+    if ( fileread(plans, "plan_lib.dat", false) )
     {
-        std::string filename = "plangroup" + boost::lexical_cast<std::string>(i) + ".bin";
-        plan_group p_group;
-        if ( fileread(p_group, filename.c_str(), false) )
+        for (int i; i < plans.size(); i++)
         {
-            _num_plan_groups++;
-            _plan_groups.push_back(p_group);
+            try { _kdtree->add(plans[i]); }
+            catch (std::string& s)
+            {
+                ROS_ERROR("Exception: %s.", s.c_str());
+            }
         }
+    }
+    else
+    {
+        ROS_ERROR("File import failed.");
     }
     return;
 }
