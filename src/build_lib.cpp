@@ -14,43 +14,45 @@ int main(int argc, char** argv)
     std::cin.ignore(100, '\n');
 
     /* Define pick and place volumes */
-    rect_grid pickVol;
-    pickVol.orientation.w = 1;
-    pickVol.orientation.x = 0;
-    pickVol.orientation.y = 0;
-    pickVol.orientation.z = 0;
-    pickVol.xlim_low = -0.25;
-    pickVol.xlim_high = 0.25;
-    pickVol.xres = 3;
-    pickVol.ylim_high = -0.25;
-    pickVol.ylim_low = 0.25;
-    pickVol.yres = 3;
-    pickVol.zlim_low = 0.70;
-    pickVol.zlim_high = 0.80;
-    pickVol.zres = 2;
+    target_volume pickVol;
+    pickVol.grid.orientation.w = 1;
+    pickVol.grid.orientation.x = 0;
+    pickVol.grid.orientation.y = 0;
+    pickVol.grid.orientation.z = 0;
+    pickVol.grid.xlim_low = -0.35;
+    pickVol.grid.xlim_high = 0.35;
+    pickVol.grid.xres = 7;
+    pickVol.grid.ylim_high = -0.35;
+    pickVol.grid.ylim_low = 0.35;
+    pickVol.grid.yres = 7;
+    pickVol.grid.zlim_low = 0.80;
+    pickVol.grid.zlim_high = 0.90;
+    pickVol.grid.zres = 1;
+    pickVol.allow_internal_paths = false;
 
-    rect_grid placeVol;
-    placeVol.orientation.w = 0;
-    placeVol.orientation.x = -1;
-    placeVol.orientation.y = 0;
-    placeVol.orientation.z = 0;
-    placeVol.xlim_low = -.10;
-    placeVol.xlim_high = 0.10;
-    placeVol.xres = 2;
-    placeVol.ylim_low = -.10;
-    placeVol.ylim_high = 0.10;
-    placeVol.yres = 2;
-    placeVol.zlim_low = 0.25;
-    placeVol.zlim_high = 0.35;
-    placeVol.zres = 2;
+    target_volume placeVol;
+    placeVol.grid.orientation.w = 0;
+    placeVol.grid.orientation.x = -1;
+    placeVol.grid.orientation.y = 0;
+    placeVol.grid.orientation.z = 0;
+    placeVol.grid.xlim_low = -.10;
+    placeVol.grid.xlim_high = 0.10;
+    placeVol.grid.xres = 1;
+    placeVol.grid.ylim_low = -.10;
+    placeVol.grid.ylim_high = 0.10;
+    placeVol.grid.yres = 1;
+    placeVol.grid.zlim_low = 0.15;
+    placeVol.grid.zlim_high = 0.35;
+    placeVol.grid.zres = 1;
+    placeVol.allow_internal_paths = false;
 
-    std::vector<rect_grid> grids;
-    grids.push_back(pickVol);
-    grids.push_back(placeVol);
+    std::vector<target_volume> t_vols;
+    t_vols.push_back(pickVol);
+    t_vols.push_back(placeVol);
 
     /* Generate target joint values */
     ROS_INFO("Calculating target joint values.");
-    tlib.generateTargets(grids);
+    tlib.generateTargets(t_vols);
     ROS_INFO("Hit enter to begin building library.");
     std::cin.ignore(100, '\n');
 
