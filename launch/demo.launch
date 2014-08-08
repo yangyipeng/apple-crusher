@@ -4,6 +4,7 @@
   <arg if="$(arg debug)" name="launch_prefix" value="gdb --ex run --args" />
   <arg name="limited" default="true" />
   <arg name="sim" default="false"/>
+  <arg name="bush_radius" default="0.15"/>
 
   <include file="$(find ur5_moveit_config)/launch/planning_context.launch">
     <arg name="load_robot_description" value="true"/>
@@ -20,5 +21,6 @@
     <rosparam command="load" file="$(find ur5_moveit_config)/config/kinematics.yaml"/>
     <param name="/planning_plugin" value="ompl_interface/OMPLPlanner"/>
     <rosparam command="load" file="$(find ur5_moveit_config)/config/ompl_planning.yaml"/>
+		<param name="bush_radius" value="$(arg bush_radius)" type="double" />
   </node>
 </launch>

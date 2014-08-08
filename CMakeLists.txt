@@ -108,8 +108,8 @@ add_library(tlib
 )
 
 ## Declare a cpp executable
-add_executable(build_lib 
-   src/build_lib.cpp
+add_executable(build_lib_weeding
+	 src/build_lib_weeding.cpp
 )
 
 add_executable(demo 
@@ -126,9 +126,9 @@ target_link_libraries(tlib
    ${catkin_LIBRARIES}
 )
 
-target_link_libraries(build_lib
+target_link_libraries(build_lib_weeding
    tlib
-	 ${catkin_LIBRARIES}
+   ${catkin_LIBRARIES}
 )
 
 target_link_libraries(demo

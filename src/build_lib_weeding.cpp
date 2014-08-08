@@ -28,14 +28,14 @@ int main(int argc, char** argv)
     weedSoilVol.grid.orientation.x = 0;
     weedSoilVol.grid.orientation.y = -sqrt(0.5);
     weedSoilVol.grid.orientation.z = 0;
-    weedSoilVol.grid.xlim_low = -.35;
+    weedSoilVol.grid.xlim_low = -0.35;
     weedSoilVol.grid.xlim_high = 0.35;
-    weedSoilVol.grid.xres = 3;
-    weedSoilVol.grid.ylim_low = -.35;
-    weedSoilVol.grid.ylim_high = 0.35;
-    weedSoilVol.grid.yres = 3;
+    weedSoilVol.grid.xres = 4;
+    weedSoilVol.grid.ylim_high = -0.25;
+    weedSoilVol.grid.ylim_low = 0.25;
+    weedSoilVol.grid.yres = 2;
     weedSoilVol.grid.zlim_low = 0.80;
-    weedSoilVol.grid.zlim_high = 0.95;
+    weedSoilVol.grid.zlim_high = 0.89;
     weedSoilVol.grid.zres = 1;
     weedSoilVol.allow_internal_paths = true;
 
@@ -44,7 +44,8 @@ int main(int argc, char** argv)
 
     /* Generate target joint values */
     ROS_INFO("Calculating target joint values.");
-    tlib.generateTargets(t_vols);
+    tlib.setTargetVolumes(t_vols);
+    tlib.generateTargets();
 
     ROS_INFO("Hit enter to begin building library.");
     std::cin.ignore(100, '\n');

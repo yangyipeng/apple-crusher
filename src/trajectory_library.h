@@ -54,12 +54,26 @@ typedef struct {
 
     // Assume single orientation for all positions
     geometry_msgs::Quaternion orientation;
-} rect_grid;
+} grid_rect;
 
 typedef struct {
-    rect_grid grid;
+    double radius;
+    geometry_msgs::Point position;
+    int lat_res;
+    int long_res;
+} grid_sphere;
+
+typedef struct {
+    int type;
+    grid_rect grid;
+    grid_sphere sphere;
     bool allow_internal_paths;
 } target_volume;
+
+enum grid_type {
+    GRID_RECT,
+    GRID_SPHERE
+};
 
 typedef struct {
     target_volume vol;
@@ -100,7 +114,7 @@ class TrajectoryLibrary
 
     // Gradient descent warp
     bool gradientDescentWarp(ur5_motion_plan& plan, const joint_values_t& jvals_start, const joint_values_t& jvals_end);
-    void calculateGradients(double* gradient_array, robot_trajectory::RobotTrajectoryPtr traj);
+    double calculateGradients(double* gradient_array, robot_trajectory::RobotTrajectoryPtr traj);
 
     // Trajectory post-processing
     void optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr traj_opt, robot_trajectory::RobotTrajectoryPtr traj);
@@ -108,7 +122,9 @@ class TrajectoryLibrary
     void computeVelocities(robot_trajectory::RobotTrajectoryPtr traj);
 
     // Private methods
-    std::size_t gridLinspace(std::vector<joint_values_t>& jvals, rect_grid& grid);
+    std::size_t rectLinspace(std::vector<joint_values_t>& jvals, grid_rect& grid);
+    std::size_t sphereLinspace(std::vector<joint_values_t>& jvals, grid_sphere& sphere);
+
     bool planTrajectory(ur5_motion_plan& plan, std::vector<moveit_msgs::Constraints> constraints);
 
     void printPose(const geometry_msgs::Pose& pose);
@@ -117,6 +133,7 @@ class TrajectoryLibrary
     moveit_msgs::Constraints genPoseConstraint(geometry_msgs::Pose pose_goal);
     moveit_msgs::Constraints genJointValueConstraint(joint_values_t jvals);
 
+    bool doIK(std::vector<joint_values_t>& solutions, const geometry_msgs::Pose& geo_pose);
     bool ikValidityCallback(const std::vector<joint_values_t>& comparison_values, robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals);
 
     moveit_msgs::AttachedCollisionObject getAppleObjectMsg();
@@ -128,15 +145,20 @@ class TrajectoryLibrary
 public:
     TrajectoryLibrary(ros::NodeHandle& nh);
 
-    void initWorld();
-    void generateTargets(const std::vector<target_volume> & vols);
+    void initWorkspaceBounds();
+    void addSphereCollisionObject(double radius);
+    void printCollisionWorldInfo(std::ostream& cout);
+
+    void setTargetVolumes(const std::vector<target_volume> & vols);
+    void generateTargets();
+    void generateRandomJointTarget(joint_values_t& jvals, const target_volume& vol);
     void build();
     void demo();
 
     void fitPlan(ur5_motion_plan& plan, const joint_values_t &start_jvals, const joint_values_t &end_jvals);
 
-    void exportToFile();
-    void importFromFile();
+    void exportToFile(const char* filename);
+    void importFromFile(const char* filename);
 };
 
 #endif // TRAJECTORY_LIBRARY_H

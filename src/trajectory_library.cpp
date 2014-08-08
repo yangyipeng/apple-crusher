@@ -36,16 +36,14 @@ TrajectoryLibrary::TrajectoryLibrary(ros::NodeHandle& nh)
     // Initialize KD Tree
     std::vector<double> low_bounds(12,-M_PI-0.10);
     std::vector<double> high_bounds(12, M_PI+0.10);
-    std::vector<std::size_t> res(12, 20);
+    std::vector<std::size_t> res(12, 10);
     _kdtree.reset(new KDTree(_rmodel, low_bounds, high_bounds, res));
 
     return;
 }
 
-void TrajectoryLibrary::initWorld()
+void TrajectoryLibrary::initWorkspaceBounds()
 {
-    collision_detection::WorldPtr world = _plan_scene->getWorldNonConst();
-
     moveit_msgs::CollisionObject object_msg;
     geometry_msgs::Pose pose;
 
@@ -60,7 +58,6 @@ void TrajectoryLibrary::initWorld()
     pose.position.x = 0;
     pose.position.y = 0;
     pose.position.z = 0;
-    //pose.position.z = 0.05;
     plane.coef[0] = 0;
     plane.coef[1] = 0;
     plane.coef[2] = 1;
@@ -119,21 +116,34 @@ void TrajectoryLibrary::initWorld()
     object_msg.plane_poses[0] = pose;
     _plan_scene->processCollisionObjectMsg(object_msg);
 
+    // Publish updated planning scene
+    moveit_msgs::PlanningScene scene_msg;
+    _plan_scene->getPlanningSceneMsg(scene_msg);
+    _plan_scene_publisher.publish(scene_msg);
+
+    return;
+}
+
+void TrajectoryLibrary::addSphereCollisionObject(double radius)
+{
     /////////////////// Obstructo sphere
+    moveit_msgs::CollisionObject object_msg;
+    object_msg.header.frame_id = "world";
+    object_msg.operation = object_msg.ADD;
+
     // Publish object
     shape_msgs::SolidPrimitive primitive;
-    primitive.type = primitive.BOX;
-    primitive.dimensions.resize(3);
-    primitive.dimensions[0] = 0.2;
-    primitive.dimensions[1] = 0.1;
-    primitive.dimensions[2] = 0.2;
+    primitive.type = primitive.SPHERE;
+    primitive.dimensions.resize(1);
+    primitive.dimensions[0] = radius;
+    geometry_msgs::Pose pose;
     pose.orientation.w = 1;
     pose.orientation.x = 0;
     pose.orientation.y = 0;
     pose.orientation.z = 0;
     pose.position.x = 0;
     pose.position.y = 0;
-    pose.position.z = 0.9;
+    pose.position.z = 0.9 - radius*0.6; // place sphere on "ground" (robot is upside down on Ladybird, ~0.9 m above the ground)
     object_msg.id = "obstructo_sphere";
     object_msg.header.frame_id = "world";
     object_msg.primitives.clear();
@@ -152,12 +162,18 @@ void TrajectoryLibrary::initWorld()
     _plan_scene->getPlanningSceneMsg(scene_msg);
     _plan_scene_publisher.publish(scene_msg);
 
-    _plan_scene->printKnownObjects(std::cout);
-    _acm.print(std::cout);
     return;
 }
 
-std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, rect_grid& grid)
+void TrajectoryLibrary::printCollisionWorldInfo(std::ostream& cout)
+{
+    _plan_scene->printKnownObjects(cout);
+    _acm.print(cout);
+
+    return;
+}
+
+std::size_t TrajectoryLibrary::rectLinspace(std::vector<joint_values_t>& jvals, grid_rect& grid)
 {
     double di, dj, dk;
     di = dj = dk = 0.0;
@@ -180,7 +196,6 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
     jvals.reserve(num_poses);
 
     geometry_msgs::Pose geo_pose;
-    robot_state::RobotStatePtr state(new robot_state::RobotState(_rmodel));
 
     // Linspace
     int n = -1;
@@ -197,41 +212,76 @@ std::size_t TrajectoryLibrary::gridLinspace(std::vector<joint_values_t>& jvals, 
                 geo_pose.orientation = grid.orientation;
 
                 // We want to generate a number of joint value targets for each geo pose
-                bool ik_success;
-                std::vector<joint_values_t> geo_jvals;
-                for (int tries = 0; tries < MAX_IK_SOLUTIONS; tries++)
+                std::vector<joint_values_t> solutions;
+                bool success = doIK(solutions, geo_pose);
+
+                if (success)
                 {
-                    // Do IK
-                    ik_success = state->setFromIK(_jmg, geo_pose, 10, 0.2, boost::bind(&TrajectoryLibrary::ikValidityCallback, this, geo_jvals, _1, _2, _3));
-                    if (!ik_success)
+                    // Now we push any values contained in geo_jvals into our jvals vector
+                    for (int m = 0; m < solutions.size(); m++)
                     {
-                        break;
+                        jvals.push_back(solutions[m]);
                     }
-
-                    // If IK succeeded
-                    joint_values_t j;
-                    state->copyJointGroupPositions(_jmg, j);
-                    // Add to vector
-                    geo_jvals.push_back(j);
-                    ROS_INFO("Successfully generated joint values for pose %d.", n);
-                }
-
-                // Now we push any values contained in geo_jvals into our jvals vector
-                for (int m = 0; m < geo_jvals.size(); m++)
-                {
-                    jvals.push_back(geo_jvals[m]);
+                    ROS_INFO("Generated %d solutions for geo_pose %d.", (int) solutions.size(), n);
                 }
 
                 // If we had none to push
-                if (geo_jvals.size() == 0)
+                if (solutions.size() == 0)
                 {
-                    ROS_WARN("Could not solve IK for pose %d: Skipping.", n);
                     printPose(geo_pose);
+                    ROS_WARN("Could not solve IK for pose %d: Skipping.", n);
                 }
             }
         }
     }
     return jvals.size();
+}
+
+std::size_t TrajectoryLibrary::sphereLinspace(std::vector<joint_values_t> &jvals, grid_sphere &sphere)
+{
+//    double lat;
+//    double longitude;
+//    std::size_t target_count = 0;
+
+//    double dlong = M_PI/sphere.long_res;
+
+
+
+
+
+//    return target_count;
+}
+
+bool TrajectoryLibrary::doIK(std::vector<joint_values_t>& solutions, const geometry_msgs::Pose& geo_pose)
+{
+    // We want to generate a number of joint value targets for each geo pose
+    bool ik_success;
+    robot_state::RobotState state(_rmodel);
+    for (int tries = 0; tries < MAX_IK_SOLUTIONS; tries++)
+    {
+        // Do IK
+        ik_success = state.setFromIK(_jmg, geo_pose, 5, 0.4, boost::bind(&TrajectoryLibrary::ikValidityCallback, this, solutions, _1, _2, _3));
+        if (!ik_success)
+        {
+            break;
+        }
+
+        // If IK succeeded
+        joint_values_t j;
+        state.copyJointGroupPositions(_jmg, j);
+        // Add to vector
+        solutions.push_back(j);
+    }
+
+    // If we had none to push
+    if (solutions.size() == 0)
+    {
+        return false;
+    }
+    else
+    {
+        return true;
+    }
 }
 
 bool TrajectoryLibrary::ikValidityCallback(const std::vector<joint_values_t>& comparison_values, robot_state::RobotState* p_state, const robot_model::JointModelGroup* p_jmg, const double* jvals)
@@ -266,19 +316,36 @@ bool TrajectoryLibrary::ikValidityCallback(const std::vector<joint_values_t>& co
     return true;
 }
 
-void TrajectoryLibrary::generateTargets(const std::vector<target_volume>& vols)
+void TrajectoryLibrary::setTargetVolumes(const std::vector<target_volume> &vols)
 {
     target_group t_group;
-    for (int i = 0; i < vols.size(); i++)
+
+    _num_target_groups = vols.size();
+
+    for (int i = 0; i < _num_target_groups; i++)
     {
-        ROS_INFO("Generating joint value targets for group %d.", i);
         t_group.vol = vols[i];
-        t_group.target_count = gridLinspace(t_group.jvals, t_group.vol.grid);
-        ROS_INFO("Generated %d of %d possible targets.", t_group.target_count, t_group.vol.grid.xres*t_group.vol.grid.yres*t_group.vol.grid.zres*MAX_IK_SOLUTIONS);
         _target_groups.push_back(t_group);
     }
 
-    _num_target_groups += vols.size();
+    return;
+}
+
+void TrajectoryLibrary::generateTargets()
+{
+    for (int i = 0; i < _num_target_groups; i++)
+    {
+        target_group & t_group = _target_groups[i];
+        ROS_INFO("Generating joint value targets for group %d.", i);
+        if (t_group.vol.type == GRID_RECT)
+        {
+            t_group.target_count = rectLinspace(t_group.jvals, t_group.vol.grid);
+        }
+        if (t_group.vol.type == GRID_SPHERE)
+        {
+        }
+        ROS_INFO("Generated %d targets.", t_group.target_count);
+    }
     return;
 }
 
@@ -311,11 +378,11 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
     // Add constraints
     req.goal_constraints = constraints;
     //req.planner_id = "manipulator[LBKPIECEkConfigDefault]";
-    req.planner_id = "manipulator[RRTConnectkConfigDefault]";
-    //req.planner_id = "manipulator[RRTstarkConfigDefault]";
-    req.allowed_planning_time = 5.0;
+    //req.planner_id = "manipulator[RRTConnectkConfigDefault]";
+    req.planner_id = "manipulator[RRTstarkConfigDefault]";
+    req.allowed_planning_time = 20.0;
 
-    req.num_planning_attempts = 1;
+    req.num_planning_attempts = 3;
 
 
     // Define workspace
@@ -411,6 +478,7 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
 {
     // Make a copy
     *traj_opt = *traj;
+//  return;
 
     std::size_t wpt_count = traj->getWayPointCount();
     ROS_INFO("Optimize starts with %d waypoints.", (int) wpt_count);
@@ -431,7 +499,7 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
             // Define shortcut as straight line in joint space between waypoints i and j
             shortcut.clear();
             shortcut.insertWayPoint(0, wpt_i, 0.0);
-            shortcut.insertWayPoint(1, wpt_j, 0.0);
+            shortcut.insertWayPoint(1, wpt_j, 1.0);
 
             // Now check if shortcut is valid
             if (_plan_scene->isPathValid(shortcut, UR5_GROUP_NAME))
@@ -522,11 +590,12 @@ moveit_msgs::Constraints TrajectoryLibrary::genJointValueConstraint(joint_values
     return kinematic_constraints::constructGoalConstraints(state, _jmg, 0.01);
 }
 
-void TrajectoryLibrary::calculateGradients(double* gradient_array, robot_trajectory::RobotTrajectoryPtr traj)
+double TrajectoryLibrary::calculateGradients(double* gradient_array, robot_trajectory::RobotTrajectoryPtr traj)
 {
     int num_wpts = traj->getWayPointCount();
     int num_joints = _rmodel->getVariableCount();
-    double delta = 0.002;
+    double delta = 0.001;
+    double max = 0;
 
     double duration_old = traj->getWaypointDurationFromStart(num_wpts-1);
     double duration_new;
@@ -552,14 +621,20 @@ void TrajectoryLibrary::calculateGradients(double* gradient_array, robot_traject
             duration_new = traj->getWaypointDurationFromStart(num_wpts-1);
 
             // Now calculate gradient
-            *(gradient_array + (i*num_joints) + j) = (duration_new - duration_old)/delta;
+            double gradient = (duration_new - duration_old) / delta;
+            if (max < abs(gradient))
+            {
+                max = abs(gradient);
+            }
+            printf("Calculated gradient with old dur %f and new dur %f to be %f.\n", duration_old, duration_new, gradient);
+            *(gradient_array + (i*num_joints) + j) = gradient;
 
             // Now reset joint j
             gtstate[j] -= delta;
         }
     }
 
-    return;
+    return max;
 }
 
 bool TrajectoryLibrary::gradientDescentWarp(ur5_motion_plan &plan, const joint_values_t &jvals_start, const joint_values_t &jvals_end)
@@ -590,9 +665,8 @@ bool TrajectoryLibrary::gradientDescentWarp(ur5_motion_plan &plan, const joint_v
     }
 
     // Now do gradient descent to smooth the rest of the path
-    robot_trajectory::RobotTrajectoryPtr traj_temp(new robot_trajectory::RobotTrajectory(_rmodel, UR5_GROUP_NAME));
-    *traj_temp = *traj;
-    boost::shared_ptr<double> gradient_field(new double[num_wpts*num_joints]);
+    robot_trajectory::RobotTrajectoryPtr traj_temp(new robot_trajectory::RobotTrajectory(*traj));
+    double* gradient_field = new double[num_wpts * num_joints];
     robot_state::RobotStatePtr wpt;
     double* gtstate;
 
@@ -603,11 +677,14 @@ bool TrajectoryLibrary::gradientDescentWarp(ur5_motion_plan &plan, const joint_v
 
     do
     {
+        std::cout << "GDW cycle.\n";
+
         // Update previous duration
         old_duration = new_duration;
 
         // Calculate gradients
-        calculateGradients(gradient_field.get(), traj_temp);
+        double grad_max = calculateGradients(gradient_field, traj_temp);
+        printf("Max gradient is %f.\n", grad_max);
 
         // For each waypoint besides the start and end
         for (int i=1; i < num_wpts-1; i++)
@@ -619,13 +696,18 @@ bool TrajectoryLibrary::gradientDescentWarp(ur5_motion_plan &plan, const joint_v
             for (int j=0; j < num_joints; j++)
             {
                 // Move joint according to negative gradient
-                gtstate[j] += -(gradient_field.get())[ (i*num_joints) + j ];
+                double gradient = gradient_field[ (i*num_joints) + j ];
+                double move = -(gradient / grad_max) * 0.001;
+                printf("Gradient %f. Moving wpt %d joint %d by %f.\n", gradient, i, j, move);
+                gtstate[j] += move;
             }
+            wpt->update(true);
         }
 
         // Make sure path is valid
         if (!_plan_scene->isPathValid(*traj_temp, UR5_GROUP_NAME))
         {
+            ROS_ERROR("Made invalid path in GDW.");
             break;
         }
 
@@ -636,14 +718,22 @@ bool TrajectoryLibrary::gradientDescentWarp(ur5_motion_plan &plan, const joint_v
         // Update trajectory
         *traj = *traj_temp;
 
-    } while (old_duration - new_duration > 0.1);
+        ROS_INFO("Improved duration by %f sec.", old_duration - new_duration);
+
+    } while (old_duration - new_duration > 0.01);
+
+    std::cout << "Broke out of GDW loop.\n";
+
+    delete[] gradient_field;
 
     // Now we have smoothed and fitted path
+    // timeWarpTrajectory(traj, 3);
+    computeVelocities(traj);
     traj->getRobotTrajectoryMsg(plan.trajectory);
     plan.duration = new_duration;
     plan.num_wpts = num_wpts;
-    moveit::core::robotStateToRobotStateMsg(*wpt_start, plan.start_state);
-    moveit::core::robotStateToRobotStateMsg(*wpt_end, plan.end_state);
+    moveit::core::robotStateToRobotStateMsg(traj->getFirstWayPoint(), plan.start_state);
+    moveit::core::robotStateToRobotStateMsg(traj->getLastWayPoint(), plan.end_state);
 
     return true;
 }
@@ -668,9 +758,9 @@ void TrajectoryLibrary::fitPlan(ur5_motion_plan& plan, const joint_values_t &sta
 void TrajectoryLibrary::build()
 {
     /* Check that target groups have been generated */
-    if (_num_target_groups < 2)
+    if (_num_target_groups == 0)
     {
-        ROS_ERROR("%d target groups defined. Need at least 2.", _num_target_groups);
+        ROS_ERROR("No target groups defined.");
         return;
     }
 
@@ -699,18 +789,18 @@ void TrajectoryLibrary::build()
                 ROS_INFO("END GROUP: %d", j);
             }
 
-            // If we are moving from place target to pick target, we need to attach an apple
-            moveit_msgs::AttachedCollisionObject aco_msg;
-            if (i == PLACE_TARGET && j == PICK_TARGET)
-            {
-                aco_msg = getAppleObjectMsg();
-            }
-            else
-            {
-                aco_msg = getAppleObjectMsg();
-                aco_msg.object.operation = aco_msg.object.REMOVE;
-            }
-            _plan_scene->processAttachedCollisionObjectMsg(getAppleObjectMsg());
+            // APPLE: If we are moving from place target to pick target, we need to attach an apple
+//            moveit_msgs::AttachedCollisionObject aco_msg;
+//            if (i == PLACE_TARGET && j == PICK_TARGET)
+//            {
+//                aco_msg = getAppleObjectMsg();
+//            }
+//            else
+//            {
+//                aco_msg = getAppleObjectMsg();
+//                aco_msg.object.operation = aco_msg.object.REMOVE;
+//            }
+//            _plan_scene->processAttachedCollisionObjectMsg(getAppleObjectMsg());
 
             /* Pick particular start target */
             for (int n = 0; n < _target_groups[i].target_count; n++)
@@ -725,12 +815,17 @@ void TrajectoryLibrary::build()
                 _plan_scene->setCurrentState(start_state);
                 // Publish planning scene
                 moveit_msgs::PlanningScene scene_msg;
-                _plan_scene->getPlanningSceneDiffMsg(scene_msg);
+                _plan_scene->getPlanningSceneMsg(scene_msg);
                 _plan_scene_publisher.publish(scene_msg);
 
                 /* Now pick particular end target */
                 for (int m = 0; m < _target_groups[j].target_count; m++)
                 {
+                    if (i == j && n == m)
+                    {
+                        // The start and end targets are the same.
+                        continue;
+                    }
                     ROS_INFO("END TARGET: %d", m);
 
                     // Generate constraint from target joint values
@@ -744,6 +839,12 @@ void TrajectoryLibrary::build()
                         ROS_ERROR("Planner failed to generate plan for end target %d. Skipping.", m);
                         continue;
                     }
+
+                    // Publish trajectory
+                    moveit_msgs::DisplayTrajectory display_trajectory;
+                    display_trajectory.trajectory.push_back(plan.trajectory);
+                    display_trajectory.trajectory_start = plan.start_state;
+                    _trajectory_publisher.publish(display_trajectory);
 
                     // Now record start and stop locations
                     plan.start_target_index = n;
@@ -774,67 +875,37 @@ void TrajectoryLibrary::demo()
         ROS_ERROR("Controllers for joint group are not active.");
     }
 
-    // Pick random trajectory to base our first search off of
-    ur5_motion_plan plan = _kdtree->getRandomPlan();
-
-    // Now extract end state and initialize end state to equal start state
     robot_state::RobotState start_state(_rmodel);
     robot_state::RobotState end_state(_rmodel);
-    moveit::core::robotStateMsgToRobotState(plan.end_state, end_state);
 
-    int prev_end_target = plan.end_target_index;
-
-    ROS_INFO("Starting at target %d.", prev_end_target);
+    ROS_INFO("Generating start target.");
+    // Generate last end target
+    joint_values_t start_jvals;
+    joint_values_t end_jvals;
+    //////////////////////
+    /// This is specific to WEEDING with single target group
+    generateRandomJointTarget(end_jvals, _target_groups[0].vol);
+    //////////////////////
+    end_state.setJointGroupPositions(_jmg, end_jvals);
 
     while (1)
     {
-        ///////////// Search randomly for next trajectory
-        while (1)
-        {
-            try {
-                plan = _kdtree->getRandomPlanStartingNear(plan.end_state, 10.0);
-                break;
-            }
-            catch (const char* s)
-            {
-                plan = _kdtree->getRandomPlan();
-                prev_end_target = plan.end_target_index;
-                ROS_ERROR("Could not find follow-up plan. Jumping to target %d.", prev_end_target);
-                ROS_INFO("Press enter to continue.");
-                while (std::cin.get() != '\n');
-                continue;
-            }
-        }
-
         // Update start state
         start_state = end_state;
 
-        // Extract end state
-        moveit::core::robotStateMsgToRobotState(plan.end_state, end_state);
-        if (!_plan_scene->isStateValid(end_state, UR5_GROUP_NAME, true))
-        {
-            ROS_ERROR("Original end target is not valid. Planning scene environment must have changed since library was built.");
-            ROS_INFO("Press Enter to continue.");
-            while (std::cin.get() != '\n');
-        }
+        // Generate end target
+        generateRandomJointTarget(end_jvals, _target_groups[0].vol);
+        end_state.setJointGroupPositions(_jmg, end_jvals);
+        end_state.update(true);
 
-        ////// Generate randomized goal target near our fetched trajectory
-        double dist = 0.05;
-        do
-        {
-            dist = dist*0.8;
-            end_state.setToRandomPositionsNearBy(_jmg, end_state, dist);
-            end_state.update(true);
-        } while (!_plan_scene->isStateValid(end_state, UR5_GROUP_NAME, true));
+        // Extract start state joint values
+        start_state.copyJointGroupPositions(_jmg, start_jvals);
 
         // Computation time
         boost::posix_time::ptime compute_time_start = boost::posix_time::microsec_clock::universal_time();
 
         ROS_INFO("Running gradient fit.");
-        joint_values_t start_jvals;
-        joint_values_t end_jvals;
-        start_state.copyJointGroupPositions(_jmg, start_jvals);
-        end_state.copyJointGroupPositions(_jmg, end_jvals);
+        ur5_motion_plan plan;
         fitPlan(plan, start_jvals, end_jvals);
 
         // Computation time
@@ -844,14 +915,13 @@ void TrajectoryLibrary::demo()
         // Get RobotTrajectory object from msg
         robot_trajectory::RobotTrajectory traj(_rmodel, UR5_GROUP_NAME);
         traj.setRobotTrajectoryMsg(start_state, plan.trajectory);
+
+        // Make sure path is valid
         if (!_plan_scene->isPathValid(traj, UR5_GROUP_NAME))
         {
             ROS_ERROR("Path invalid. Skipping.");
             continue;
         }
-
-        // Update previous end target data
-        prev_end_target = plan.end_target_index;
 
         ////////////// Now demo the trajectory
         // Set current start state
@@ -859,7 +929,7 @@ void TrajectoryLibrary::demo()
 
         // Publish planning scene and end state as separate messages
         moveit_msgs::PlanningScene scene_msg;
-        _plan_scene->getPlanningSceneDiffMsg(scene_msg);
+        _plan_scene->getPlanningSceneMsg(scene_msg);
         _plan_scene_publisher.publish(scene_msg);
 
         moveit_msgs::DisplayRobotState state_msg;
@@ -868,13 +938,6 @@ void TrajectoryLibrary::demo()
 
         // Get trajectory data
         int num_wpts = plan.num_wpts;
-        if (!_plan_scene->isPathValid(traj, UR5_GROUP_NAME))
-        {
-            // Path invalid
-            ROS_ERROR("Path invalid. Will not execute.");
-            continue;
-        }
-
         double duration = traj.getWaypointDurationFromStart(num_wpts-1);
         if (duration - plan.duration > 0.05)
         {
@@ -889,9 +952,7 @@ void TrajectoryLibrary::demo()
         _trajectory_publisher.publish(display_trajectory);
 
         ROS_INFO("Starting from joint values: ");
-        joint_values_t jvals;
-        start_state.copyJointGroupPositions(_jmg, jvals);
-        printJointValues(jvals);
+        printJointValues(start_jvals);
         ROS_INFO("Press enter when ready.");
         while (std::cin.get() != '\n');
 
@@ -899,8 +960,10 @@ void TrajectoryLibrary::demo()
         _execution_manager->pushAndExecute(plan.trajectory);
 
         // Now delay for duration of trajectory
+        ROS_INFO("Waiting for execution.");
         ros::WallDuration sleep_time(plan.duration);
         sleep_time.sleep();
+        ROS_INFO("Done.");
         // _execution_manager->waitForExecution();
     }
 
@@ -1134,11 +1197,11 @@ bool TrajectoryLibrary::fileread(std::vector<ur5_motion_plan>& plans, const char
 
 }
 
-void TrajectoryLibrary::exportToFile()
+void TrajectoryLibrary::exportToFile(const char* filename)
 {
     // SAVE DATA TO .dat FILE
     ROS_INFO("--------------SAVING!!!!-------------------");
-    if ( filewrite(_kdtree->getPlanData(), "plan_lib.dat", false) )
+    if ( filewrite(_kdtree->getPlanData(), filename, false) )
     {
         ROS_INFO("Trajectories written to file.");
     }
@@ -1149,12 +1212,12 @@ void TrajectoryLibrary::exportToFile()
     return;
 }
 
-void TrajectoryLibrary::importFromFile()
+void TrajectoryLibrary::importFromFile(const char *filename)
 {
     //LOAD DATA FROM .dat FILE
     ROS_INFO("--------------LOADING!!!!-------------------");
     std::vector<ur5_motion_plan> plans;
-    if ( fileread(plans, "plan_lib.dat", false) )
+    if ( fileread(plans, filename, false) )
     {
         for (int i=0; i < plans.size(); i++)
         {
@@ -1195,3 +1258,36 @@ void TrajectoryLibrary::importFromFile()
 
     return apple;
 }
+
+ void TrajectoryLibrary::generateRandomJointTarget(joint_values_t& jvals, const target_volume& vol)
+ {
+     if (vol.type == GRID_RECT)
+     {
+         double dx = (vol.grid.xlim_high - vol.grid.xlim_low) / 1000.0;
+         double dy = (vol.grid.ylim_high - vol.grid.ylim_low) / 1000.0;
+         double dz = (vol.grid.zlim_high - vol.grid.zlim_low) / 1000.0;
+
+         bool success = false;
+         std::vector<joint_values_t> solutions;
+         while (!success)
+         {
+             geometry_msgs::Pose pose;
+             pose.orientation = vol.grid.orientation;
+             pose.position.x = (dx * (rand() % 1000)) + vol.grid.xlim_low;
+             pose.position.y = (dy * (rand() % 1000)) + vol.grid.ylim_low;
+             pose.position.z = (dz * (rand() % 1000)) + vol.grid.zlim_low;
+
+             success = doIK(solutions, pose);
+         }
+
+         jvals = joint_values_t(solutions[0]);
+
+     }
+
+     else
+     {
+         ROS_ERROR("Bad target volume type. Generate random joint target failed.");
+     }
+
+     return;
+ }
