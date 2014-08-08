@@ -17,7 +17,7 @@
   <!-- Remap follow_joint_trajectory -->
   <remap if="$(arg sim)" from="/follow_joint_trajectory" to="/arm_controller/follow_joint_trajectory"/>
 
-  <group ns="build_lib">  
+  <group ns="build_lib_weeding">  
   	<include file="$(find ur5_moveit_config)/launch/trajectory_execution.launch.xml"/>
   </group>
 
