@@ -35,7 +35,7 @@
 #include <iostream>
 
 #define UR5_GROUP_NAME "manipulator"
-#define DT_LOCAL_COLLISION_CHECK 0.05
+#define PATH_VALIDITY_CHECKER_RES 200
 #define MAX_IK_SOLUTIONS 1
 #define MAX_PLANNER_ATTEMPTS 2
 
@@ -124,6 +124,7 @@ class TrajectoryLibrary
     // Private methods
     std::size_t rectLinspace(std::vector<joint_values_t>& jvals, grid_rect& grid);
     std::size_t sphereLinspace(std::vector<joint_values_t>& jvals, grid_sphere& sphere);
+    bool segmentValid(robot_state::RobotState& start, robot_state::RobotState& end, int res);
 
     bool planTrajectory(ur5_motion_plan& plan, std::vector<moveit_msgs::Constraints> constraints);
 

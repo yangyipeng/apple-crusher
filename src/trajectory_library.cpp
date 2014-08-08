@@ -378,8 +378,8 @@ bool TrajectoryLibrary::planTrajectory(ur5_motion_plan& plan, std::vector<moveit
     // Add constraints
     req.goal_constraints = constraints;
     //req.planner_id = "manipulator[LBKPIECEkConfigDefault]";
-    //req.planner_id = "manipulator[RRTConnectkConfigDefault]";
-    req.planner_id = "manipulator[RRTstarkConfigDefault]";
+    req.planner_id = "manipulator[RRTConnectkConfigDefault]";
+    //req.planner_id = "manipulator[RRTstarkConfigDefault]";
     req.allowed_planning_time = 20.0;
 
     req.num_planning_attempts = 3;
@@ -474,6 +474,26 @@ void TrajectoryLibrary::timeWarpTrajectory(robot_trajectory::RobotTrajectoryPtr 
     return;
 }
 
+bool TrajectoryLibrary::segmentValid(robot_state::RobotState& start, robot_state::RobotState& end, int res)
+{
+    robot_state::RobotState inter_state(_rmodel);
+    double t = 0;
+    double dt = 1.0/res;
+    for (int i=0; i < res; i++)
+    {
+        t += dt;
+        start.interpolate(end, t, inter_state);
+        inter_state.update(true);
+        if (!_plan_scene->isStateValid(inter_state, UR5_GROUP_NAME))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
 void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr traj_opt, const robot_trajectory::RobotTrajectoryPtr traj)
 {
     // Make a copy
@@ -492,28 +512,23 @@ void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr 
         robot_state::RobotState wpt_i = traj_opt->getWayPoint(i);
 
         // Starting from the end and going backwards
-        for (std::size_t j=(wpt_count-1); j > i; j--)
+        for (std::size_t j=(wpt_count-1); j > (i+1); j--)
         {
             // Get shortcut end waypoint
             robot_state::RobotState wpt_j = traj_opt->getWayPoint(j);
-            // Define shortcut as straight line in joint space between waypoints i and j
-            shortcut.clear();
-            shortcut.insertWayPoint(0, wpt_i, 0.0);
-            shortcut.insertWayPoint(1, wpt_j, 1.0);
-
-            // Now check if shortcut is valid
-            if (_plan_scene->isPathValid(shortcut, UR5_GROUP_NAME))
+            if (segmentValid(wpt_i, wpt_j, PATH_VALIDITY_CHECKER_RES))
             {
                 ROS_INFO("Shortcut found between nodes %d and %d.", (int) i, (int) j);
                 // Create new trajectory object with only neccessary endpoints
                 // Copy in waypoints before the shortcut
-                for (std::size_t n=0; n < i; n++)
+                shortcut.clear();
+                for (std::size_t n=0; n <= i; n++)
                 {
                     robot_state::RobotStatePtr state = traj_opt->getWayPointPtr(n);
                     shortcut.insertWayPoint(n, state, 0);
                 }
                 // Copy in waypoints after the shortcut
-                for (std::size_t n=j+1; n < wpt_count; n++)
+                for (std::size_t n=j; n < wpt_count; n++)
                 {
                     robot_state::RobotStatePtr state = traj_opt->getWayPointPtr(n);
                     shortcut.insertWayPoint(n - (j-i-1), state, 0);
