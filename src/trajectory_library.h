@@ -124,7 +124,8 @@ class TrajectoryLibrary
     // Private methods
     std::size_t rectLinspace(std::vector<joint_values_t>& jvals, grid_rect& grid);
     std::size_t sphereLinspace(std::vector<joint_values_t>& jvals, grid_sphere& sphere);
-    bool segmentValid(robot_state::RobotState& start, robot_state::RobotState& end, int res);
+    bool segmentValid(const robot_state::RobotState& start, const robot_state::RobotState& end, int res);
+    bool pathValid(const robot_trajectory::RobotTrajectoryPtr traj, int res);
 
     bool planTrajectory(ur5_motion_plan& plan, std::vector<moveit_msgs::Constraints> constraints);
 

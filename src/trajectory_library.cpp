@@ -474,7 +474,7 @@ void TrajectoryLibrary::timeWarpTrajectory(robot_trajectory::RobotTrajectoryPtr 
     return;
 }
 
-bool TrajectoryLibrary::segmentValid(robot_state::RobotState& start, robot_state::RobotState& end, int res)
+bool TrajectoryLibrary::segmentValid(const robot_state::RobotState &start, const robot_state::RobotState &end, int res)
 {
     robot_state::RobotState inter_state(_rmodel);
     double t = 0;
@@ -489,10 +489,24 @@ bool TrajectoryLibrary::segmentValid(robot_state::RobotState& start, robot_state
             return false;
         }
     }
-
     return true;
 }
 
+bool TrajectoryLibrary::pathValid(const robot_trajectory::RobotTrajectoryPtr traj, int res)
+{
+    robot_state::RobotStateConstPtr seg_start;
+    robot_state::RobotStateConstPtr seg_end;
+    for (int i=1; i < traj->getWayPointCount(); i++)
+    {
+        seg_start = traj->getWayPointPtr(i-1);
+        seg_end = traj->getWayPointPtr(i);
+        if (!segmentValid(*seg_start, *seg_end, res))
+        {
+            return false;
+        }
+    }
+    return true;
+}
 
 void TrajectoryLibrary::optimizeTrajectory(robot_trajectory::RobotTrajectoryPtr traj_opt, const robot_trajectory::RobotTrajectoryPtr traj)
 {
@@ -673,7 +687,7 @@ bool TrajectoryLibrary::gradientDescentWarp(ur5_motion_plan &plan, const joint_v
     wpt_end->update(true);
 
     // If path invalid
-    if (!_plan_scene->isPathValid(*traj, UR5_GROUP_NAME))
+    if (!pathValid(traj, PATH_VALIDITY_CHECKER_RES))
     {
         ROS_WARN("Gradient descent failed.");
         return false;
@@ -720,7 +734,7 @@ bool TrajectoryLibrary::gradientDescentWarp(ur5_motion_plan &plan, const joint_v
         }
 
         // Make sure path is valid
-        if (!_plan_scene->isPathValid(*traj_temp, UR5_GROUP_NAME))
+        if (!pathValid(traj_temp, PATH_VALIDITY_CHECKER_RES))
         {
             ROS_ERROR("Made invalid path in GDW.");
             break;
@@ -764,6 +778,7 @@ void TrajectoryLibrary::fitPlan(ur5_motion_plan& plan, const joint_values_t &sta
         std::cout << "Looking up plan at position " << proximity_index << " in priority queue." << std::endl;
         _kdtree->lookup(plan, proximity_index);
         success = gradientDescentWarp(plan, start_jvals, end_jvals);
+        ++proximity_index;
     } while (!success);
 
     std::cout << "Found plan.\n";
@@ -928,11 +943,11 @@ void TrajectoryLibrary::demo()
         ROS_INFO("KD lookup time: = %d usec.", (int) (compute_time_end - compute_time_start).total_microseconds());
 
         // Get RobotTrajectory object from msg
-        robot_trajectory::RobotTrajectory traj(_rmodel, UR5_GROUP_NAME);
-        traj.setRobotTrajectoryMsg(start_state, plan.trajectory);
+        robot_trajectory::RobotTrajectoryPtr traj(new robot_trajectory::RobotTrajectory(_rmodel, UR5_GROUP_NAME));
+        traj->setRobotTrajectoryMsg(start_state, plan.trajectory);
 
         // Make sure path is valid
-        if (!_plan_scene->isPathValid(traj, UR5_GROUP_NAME))
+        if (!pathValid(traj, PATH_VALIDITY_CHECKER_RES))
         {
             ROS_ERROR("Path invalid. Skipping.");
             continue;
@@ -953,7 +968,7 @@ void TrajectoryLibrary::demo()
 
         // Get trajectory data
         int num_wpts = plan.num_wpts;
-        double duration = traj.getWaypointDurationFromStart(num_wpts-1);
+        double duration = traj->getWaypointDurationFromStart(num_wpts-1);
         if (duration - plan.duration > 0.05)
         {
             ROS_ERROR("Duration fields do not match. %f - %f = %f.", duration, plan.duration, duration - plan.duration);
