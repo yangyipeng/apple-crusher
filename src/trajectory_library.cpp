@@ -767,22 +767,28 @@ bool TrajectoryLibrary::gradientDescentWarp(ur5_motion_plan &plan, const joint_v
     return true;
 }
 
-void TrajectoryLibrary::fitPlan(ur5_motion_plan& plan, const joint_values_t &start_jvals, const joint_values_t &end_jvals)
+bool TrajectoryLibrary::fitPlan(ur5_motion_plan& plan, const joint_values_t &start_jvals, const joint_values_t &end_jvals)
 {
     // First find similar plan in database
     _kdtree->setTargets(start_jvals, end_jvals);
     bool success;
+    bool lookup_success;
     int proximity_index = 0;
     do
     {
         std::cout << "Looking up plan at position " << proximity_index << " in priority queue." << std::endl;
-        _kdtree->lookup(plan, proximity_index);
+        lookup_success = _kdtree->lookup(plan, proximity_index);
+        if (!lookup_success)
+        {
+            ROS_ERROR("All plans failed.");
+            return false;
+        }
         success = gradientDescentWarp(plan, start_jvals, end_jvals);
         ++proximity_index;
     } while (!success);
 
     std::cout << "Found plan.\n";
-    return;
+    return true;
 }
 
 void TrajectoryLibrary::build()
@@ -936,7 +942,12 @@ void TrajectoryLibrary::demo()
 
         ROS_INFO("Running gradient fit.");
         ur5_motion_plan plan;
-        fitPlan(plan, start_jvals, end_jvals);
+        bool success = fitPlan(plan, start_jvals, end_jvals);
+        if (!success)
+        {
+            ROS_ERROR("Plan fitting failed. Trying new target.");
+            continue;
+        }
 
         // Computation time
         boost::posix_time::ptime compute_time_end = boost::posix_time::microsec_clock::universal_time();

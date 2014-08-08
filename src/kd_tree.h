@@ -89,7 +89,7 @@ public:
     const ur5_motion_plan& getRandomPlanStartingNear(const moveit_msgs::RobotState& start_state, double dist_max);
 
     void setTargets(const joint_values_t& start_jvals, const joint_values_t& end_jvals);
-    double lookup(ur5_motion_plan& plan, int hit);
+    bool lookup(ur5_motion_plan& plan, int hit);
 
     void printInfo(std::ostream& cout);
 };

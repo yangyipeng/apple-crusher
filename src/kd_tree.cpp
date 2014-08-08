@@ -134,7 +134,7 @@ void KDTree::searchCellsAtNextDistance()
 
     // Increment latest search depth counter
     _search_depth++;
-    std::cout << "Expanding search to level " << _search_depth << std::endl;
+    // std::cout << "Expanding search to level " << _search_depth << std::endl;
 
     // Search through our cell map for cells at the correct distance from target
     for (int c=0; c < _cell_count; c++)
@@ -286,16 +286,20 @@ void KDTree::setTargets(const joint_values_t &start_jvals, const joint_values_t 
     return;
 }
 
-double KDTree::lookup(ur5_motion_plan& plan, int hit)
+bool KDTree::lookup(ur5_motion_plan& plan, int hit)
 {
     while (1)
     {
+        if (hit >= _plan_count)
+        {
+            return false;
+        }
         // Check if we have already found a plan at this hit number
         if (hit < _proximity_ordering.size())
         {
             plan = _plans[ _proximity_ordering[hit] ];
             // Todo: Replace with actual distance value
-            return 0.0;
+            return true;
         }
 
         // Otherwise we need to expand our search
@@ -307,7 +311,7 @@ void KDTree::linearSort(const std::vector<std::size_t>& plan_pool)
 {
     int pool_size = plan_pool.size();
 
-    std::cout << "Performing linear sort on " << pool_size << " plans." << std::endl;
+    // std::cout << "Performing linear sort on " << pool_size << " plans." << std::endl;
 
     if (pool_size == 0)
     {
@@ -331,7 +335,7 @@ void KDTree::linearSort(const std::vector<std::size_t>& plan_pool)
     robot_state::RobotState state(_rmodel);
     double distance;
 
-    std::cout << "Calculating distances." << std::endl;
+    // std::cout << "Calculating distances." << std::endl;
     for (int i=0; i < pool_size; i++)
     {
         state.setVariablePositions(_plans[ plan_pool[i] ].start_state.joint_state.position);

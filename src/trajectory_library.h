@@ -157,7 +157,7 @@ public:
     void build();
     void demo();
 
-    void fitPlan(ur5_motion_plan& plan, const joint_values_t &start_jvals, const joint_values_t &end_jvals);
+    bool fitPlan(ur5_motion_plan& plan, const joint_values_t &start_jvals, const joint_values_t &end_jvals);
 
     void exportToFile(const char* filename);
     void importFromFile(const char* filename);
